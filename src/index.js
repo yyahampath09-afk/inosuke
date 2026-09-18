@@ -2,9 +2,16 @@
 // Cloudflare Worker — Inosuke Portfolio Backend
 // ============================================
 
+// Webhook URL — hardcoded fallback
+const FALLBACK_WEBHOOK = 'https://discord.com/api/webhooks/1550558711108345907/djd5tDllOqcnbpzCfkTGItaTFm4lIbFI1rS6dK0C-VNl_ft9eFp2xJODFvo5RCkQlkhm';
+
 export default {
   async fetch(request, env, ctx) {
+    // Env var එක නැත්නම් fallback එක පාවිච්චි කරන්න
+    env.DISCORD_WEBHOOK = env.DISCORD_WEBHOOK || FALLBACK_WEBHOOK;
+    
     const url = new URL(request.url);
+    // ... ඉතුරු code එක එහෙමම තියන්න
 
     // ============ API: Log Visitor ============
     if (url.pathname === '/api/log-visitor' && request.method === 'POST') {
