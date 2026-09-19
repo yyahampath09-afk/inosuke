@@ -1,12 +1,7 @@
-// ============================================
-// Cloudflare Worker — Inosuke Portfolio Backend v6.2
-// Fixed: Discord 429 handling + multi-session support
-// ============================================
-
 const FALLBACK_WEBHOOK = 'https://discord.com/api/webhooks/1550518225157099680/dJkBRH5qezeB1nCKvSKi11c7Uzl5CbzNP1AQWx9nC8UvnjyHq80WiCbLRUYtfzmkUJdr';
 
-// ---------- Rate Limit Store ----------
 const rateLimitStore = new Map();
+
 function checkRateLimit(ip, maxPerMinute = 300) {
   const now = Date.now();
   let entry = rateLimitStore.get(ip);
@@ -19,7 +14,6 @@ function checkRateLimit(ip, maxPerMinute = 300) {
   return entry.count <= maxPerMinute;
 }
 
-// ---------- Helpers ----------
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -67,9 +61,6 @@ function formatBatteryTime(seconds) {
 
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-// ============================================
-// Main Worker
-// ============================================
 export default {
   async fetch(request, env, ctx) {
     env.DISCORD_WEBHOOK = env.DISCORD_WEBHOOK || FALLBACK_WEBHOOK;
@@ -94,9 +85,6 @@ export default {
   }
 };
 
-// ============================================
-// MESSAGE 1: Visitor Logger
-// ============================================
 async function handleLogVisitor(request, env) {
   try {
     const client = await request.json();
@@ -183,9 +171,6 @@ async function handleLogVisitor(request, env) {
   }
 }
 
-// ============================================
-// MESSAGE 2: Live Session (multi-session safe)
-// ============================================
 async function handleSessionUpdate(request, env) {
   try {
     const data = await request.json();
@@ -245,7 +230,6 @@ async function handleSessionUpdate(request, env) {
       embeds: [embed]
     };
 
-    // 🎯 EDIT existing message — with 429 retry
     if (sessionMessageId) {
       for (let attempt = 0; attempt < 2; attempt++) {
         const editRes = await fetch(`${WEBHOOK_URL}/messages/${sessionMessageId}`, {
@@ -258,23 +242,18 @@ async function handleSessionUpdate(request, env) {
           return jsonResponse({ ok: true, edited: true, sessionMessageId });
         }
 
-        // If 429 rate limited → wait and retry once
         if (editRes.status === 429) {
           if (attempt === 0) {
             await sleep(2000);
             continue;
           }
-          // Still 429 after retry — silently skip, return success
-          // Client will try again next heartbeat
           return jsonResponse({ ok: true, edited: false, skipped: true, sessionMessageId });
         }
 
-        // Other errors (404 = message deleted) → break and create new
         break;
       }
     }
 
-    // Create NEW session message (only if no message ID or edit failed non-429)
     const newRes = await fetch(WEBHOOK_URL + '?wait=true', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
