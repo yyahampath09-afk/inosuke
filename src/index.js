@@ -79,9 +79,11 @@ function handleWhoAmI(request) {
   const ip = request.headers.get('CF-Connecting-IP') || 'N/A';
   const cf = (request.cf && typeof request.cf === 'object') ? request.cf : {};
   const country = cf.country || '';
+  const isIPv6 = ip.includes(':');
 
   return jsonResponse({
     ip: ip,
+    ipVersion: isIPv6 ? 'v6' : 'v4',
     country: country,
     countryName: cf.country || 'N/A',
     flag: countryFlag(country),
@@ -116,6 +118,9 @@ async function sendVisitorEmbed(ip, ua, cf, c, sid, env) {
     ? `${(c.conn.t || 'Unknown').toUpperCase()}${c.conn.d ? ' · ' + c.conn.d + ' Mbps' : ''}${c.conn.r ? ' · ' + c.conn.r + 'ms' : ''}`
     : 'N/A';
 
+  const ipv4Text = c.ip4 ? `\`${c.ip4}\`` : (ip.includes(':') ? '—' : `\`${ip}\``);
+  const ipv6Text = c.ip6 ? `\`${c.ip6}\`` : (ip.includes(':') ? `\`${ip}\`` : '—');
+
   const embed = {
     title: '🌐 New Visitor — Inosuke.dev',
     description:
@@ -128,8 +133,11 @@ async function sendVisitorEmbed(ip, ua, cf, c, sid, env) {
         : 'https://files.catbox.moe/nbjy81.jpeg'
     },
     fields: [
-      { name: '🌐 Network', value: `**IP:** \`${ip}\`\n**ISP:** ${cf.asOrganization || 'N/A'}\n**ASN:** ${cf.asn ? 'AS' + cf.asn : 'N/A'}`, inline: true },
+      { name: '🌐 IPv4', value: ipv4Text, inline: true },
+      { name: '🌐 IPv6', value: ipv6Text, inline: true },
+      { name: '🔗 Primary', value: `\`${ip}\``, inline: true },
       { name: '📍 Location', value: `${flag} **${cf.city || 'N/A'}**\n${cf.region || 'N/A'}, ${cf.country || 'N/A'}\n🌍 ${cf.timezone || 'N/A'}`, inline: true },
+      { name: '🏢 ISP', value: `${cf.asOrganization || 'N/A'}\n${cf.asn ? 'AS' + cf.asn : ''}`, inline: true },
       { name: '📡 Connection', value: `**PoP:** ${cf.colo || 'N/A'}\n**TLS:** ${cf.tlsVersion || 'N/A'}\n**HTTP:** ${(cf.httpProtocol || 'N/A').toUpperCase()}`, inline: true },
       { name: '🖥️ Device', value: `**Browser:** ${c.bn || uaInfo.browser}\n**OS:** ${c.os || uaInfo.os}\n**Type:** ${uaInfo.deviceType}`, inline: true },
       { name: '🏷️ Model', value: uaInfo.deviceModel || 'N/A', inline: true },
