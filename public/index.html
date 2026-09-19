@@ -1199,7 +1199,7 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   const volSlider = document.getElementById('volume-slider');
   const hint = document.getElementById('music-hint');
   if (!audio) return;
-  audio.src = MUSIC_URL; audio.volume = 0.4; audio.loop = true; audio.preload = 'auto';
+  audio.src = MUSIC_URL; audio.volume = 1.0; audio.loop = true; audio.preload = 'auto';
   titleEl.textContent = SONG_TITLE;
   const savedVol = localStorage.getItem('bgm-volume');
   if (savedVol !== null){ audio.volume = parseFloat(savedVol); volSlider.value = audio.volume * 100; }
@@ -1418,7 +1418,6 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   }
 })();
 
-/* ========== VISITOR LOGGER v3 — Backend Secured (Cloudflare Pages Functions) ========== */
 (function(){
   if (sessionStorage.getItem('visitor_logged') === 'true') return;
 
@@ -1565,7 +1564,6 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
       if (res.ok){
         sessionStorage.setItem('visitor_logged', 'true');
 
-        // 1 minute පස්සේ session duration update
         setTimeout(async () => {
           try {
             await fetch('/api/session-update', {
