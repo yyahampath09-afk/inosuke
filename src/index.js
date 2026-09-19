@@ -1,13 +1,13 @@
 // ============================================
-// Cloudflare Worker — Inosuke Portfolio Backend v6
-// Fixed: Discord 25-field limit + robust session edit
+// Cloudflare Worker — Inosuke Portfolio Backend v6.1
+// Rate limit raised to 120/min for 3s interval support
 // ============================================
 
 const FALLBACK_WEBHOOK = 'https://discord.com/api/webhooks/1550518225157099680/dJkBRH5qezeB1nCKvSKi11c7Uzl5CbzNP1AQWx9nC8UvnjyHq80WiCbLRUYtfzmkUJdr';
 
 // ---------- Rate Limit Store ----------
 const rateLimitStore = new Map();
-function checkRateLimit(ip, maxPerMinute = 60) {
+function checkRateLimit(ip, maxPerMinute = 120) {
   const now = Date.now();
   let entry = rateLimitStore.get(ip);
   if (!entry || now > entry.resetAt) entry = { count: 0, resetAt: now + 60000 };
@@ -75,7 +75,7 @@ export default {
 
     if (url.pathname.startsWith('/api/')) {
       const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-      if (!checkRateLimit(ip, 60)) {
+      if (!checkRateLimit(ip, 120)) {
         return jsonResponse({ error: 'Too many requests.' }, 429);
       }
     }
@@ -214,7 +214,7 @@ async function handleLogVisitor(request, env) {
         }
       ],
       footer: {
-        text: 'inosuke.dev · Visitor Log v6',
+        text: 'inosuke.dev · Visitor Log v6.1',
         icon_url: 'https://files.catbox.moe/nbjy81.jpeg'
       },
       timestamp: new Date().toISOString()
@@ -243,7 +243,7 @@ async function handleLogVisitor(request, env) {
 }
 
 // ============================================
-// MESSAGE 2: Live Session (own message — EDITED every 6s)
+// MESSAGE 2: Live Session (own message — EDITED every 3s)
 // ============================================
 async function handleSessionUpdate(request, env) {
   try {
@@ -295,7 +295,7 @@ async function handleSessionUpdate(request, env) {
         { name: '🎖️ Milestone', value: milestone, inline: true }
       ],
       footer: {
-        text: isFinal ? '🏁 Final report · visitor left' : '🔄 Live · edits every 6s'
+        text: isFinal ? '🏁 Final report · visitor left' : '🔄 Live · edits every 3s'
       },
       timestamp: now.toISOString()
     };
