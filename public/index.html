@@ -1424,7 +1424,9 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
 })();
 
 /* =========================================================
-   SESSION TIME TRACKER — v4 · BACKEND-DRIVEN
+   SESSION TIME TRACKER — v5 · 2 MESSAGES
+   (1) Visitor Log — static
+   (2) Live Session — edited every 5s
    ========================================================= */
 (function(){
   const SESSION_ID = (() => {
@@ -1438,7 +1440,7 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
 
   let activeMs = 0;
   let lastVisibleAt = document.hidden ? 0 : Date.now();
-  let messageId = sessionStorage.getItem('visitor_message_id') || null;
+  let sessionMessageId = sessionStorage.getItem('session_message_id') || null;
   let sessionLogged = sessionStorage.getItem('visitor_logged') === 'true';
   let sessionEnded = false;
   let finalSent = false;
@@ -1518,18 +1520,26 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
     if (sessionEnded && !isFinal) return;
     const currentMs = getActiveMs();
     try {
-      await fetch('/api/session-update', {
+      const res = await fetch('/api/session-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           durationMs: currentMs,
           duration: formatDuration(currentMs),
           sessionId: SESSION_ID,
-          messageId: messageId,
+          sessionMessageId: sessionMessageId,
           isFinal: isFinal
         }),
         keepalive: true
       });
+
+      if (res.ok){
+        const data = await res.json();
+        if (data.sessionMessageId && !sessionMessageId){
+          sessionMessageId = data.sessionMessageId;
+          sessionStorage.setItem('session_message_id', sessionMessageId);
+        }
+      }
     } catch(e){}
   }
 
@@ -1542,7 +1552,7 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
       durationMs: currentMs,
       duration: formatDuration(currentMs),
       sessionId: SESSION_ID,
-      messageId: messageId,
+      sessionMessageId: sessionMessageId,
       isFinal: true
     });
     if (navigator.sendBeacon){
@@ -1577,11 +1587,9 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
       });
 
       if (res.ok){
-        const data = await res.json();
-        messageId = data.messageId;
         sessionStorage.setItem('visitor_logged', 'true');
-        sessionStorage.setItem('visitor_message_id', messageId || '');
         sessionLogged = true;
+        setTimeout(() => sendUpdate(false), 500);
       }
     } catch(err){ console.log('Log failed:', err); }
   }
