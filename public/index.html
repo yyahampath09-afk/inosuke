@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>Inosuke Hasibira | Developer & VTuber</title>
-<link rel="icon" type="image/jpeg" href="https://files.catbox.moe/whohua.jpg">
+<link rel="icon" type="image/jpeg" href="https://files.catbox.moe/nbjy81.jpeg">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
@@ -1512,13 +1512,14 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
 })();
 
 /* =========================================================
-   SESSION TIME TRACKER — v7 · MOBILE-SAFE · 3s INTERVAL
+   SESSION TIME TRACKER — v8 · MULTI-SESSION SAFE
+   Resumable sessions + jitter + robust Discord handling
    ========================================================= */
 (function(){
   const SESSION_ID = (() => {
     let sid = sessionStorage.getItem('session_id');
     if (!sid){
-      sid = Date.now().toString(36).toUpperCase();
+      sid = Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2,4).toUpperCase();
       sessionStorage.setItem('session_id', sid);
     }
     return sid;
@@ -1527,13 +1528,16 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   let activeMs = 0;
   let lastVisibleAt = document.hidden ? 0 : Date.now();
   let sessionMessageId = sessionStorage.getItem('session_message_id') || null;
-  let sessionLogged = sessionStorage.getItem('visitor_logged') === 'true';
-  let sessionEnded = false;
+  let sessionLogged = false;
   let finalSent = false;
   let pendingTimers = [];
   let updating = false;
   let hiddenTimer = null;
   let heartbeatInterval = null;
+
+  if (sessionStorage.getItem('visitor_logged') === 'true'){
+    sessionLogged = true;
+  }
 
   function updateActiveTime(){
     if (!document.hidden && lastVisibleAt === 0) lastVisibleAt = Date.now();
@@ -1552,11 +1556,19 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
     if (m>0) return `${m}m ${s%60}s`;
     return `${s}s`;
   }
-  function clearAllTimers(){
-    pendingTimers.forEach(t => { clearTimeout(t); clearInterval(t); });
-    pendingTimers = [];
-    if (hiddenTimer){ clearTimeout(hiddenTimer); hiddenTimer = null; }
+
+  function stopHeartbeat(){
     if (heartbeatInterval){ clearInterval(heartbeatInterval); heartbeatInterval = null; }
+    if (hiddenTimer){ clearTimeout(hiddenTimer); hiddenTimer = null; }
+  }
+
+  function startHeartbeat(){
+    if (heartbeatInterval) return;
+    heartbeatInterval = setInterval(() => {
+      if (sessionLogged && !document.hidden && !finalSent) {
+        sendUpdate(false);
+      }
+    }, 3000);
   }
 
   function collectClientInfo(){
@@ -1608,7 +1620,6 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   }
 
   async function sendUpdate(isFinal = false){
-    if (sessionEnded && !isFinal) return;
     if (updating) return;
     updating = true;
     const currentMs = getActiveMs();
@@ -1640,8 +1651,7 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   function sendFinalBeacon(){
     if (finalSent) return;
     finalSent = true;
-    sessionEnded = true;
-    clearAllTimers();
+    stopHeartbeat();
 
     const currentMs = getActiveMs();
     const payload = JSON.stringify({
@@ -1674,23 +1684,23 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
     updateActiveTime();
 
     if (document.hidden){
-      if (sessionLogged && !sessionEnded) sendUpdate(false);
+      if (sessionLogged && !finalSent) sendUpdate(false);
 
       if (hiddenTimer) clearTimeout(hiddenTimer);
       hiddenTimer = setTimeout(() => {
-        if (document.hidden && sessionLogged && !sessionEnded){
+        if (document.hidden && sessionLogged){
           sendFinalBeacon();
         }
       }, 4000);
     } else {
-      if (hiddenTimer){
-        clearTimeout(hiddenTimer);
-        hiddenTimer = null;
-        if (!finalSent){
-          sessionEnded = false;
-        }
+      if (hiddenTimer){ clearTimeout(hiddenTimer); hiddenTimer = null; }
+
+      finalSent = false;
+
+      if (sessionLogged){
+        startHeartbeat();
+        sendUpdate(false);
       }
-      if (sessionLogged && !sessionEnded) sendUpdate(false);
     }
   }
 
@@ -1704,7 +1714,11 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   }, { passive: true });
 
   async function logVisitor(){
-    if (sessionLogged) return;
+    if (sessionLogged && sessionStorage.getItem('visitor_logged') === 'true'){
+      startHeartbeat();
+      sendUpdate(false);
+      return;
+    }
     try {
       const info = collectClientInfo();
       const battery = await getBattery();
@@ -1719,25 +1733,30 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
       if (res.ok){
         sessionStorage.setItem('visitor_logged', 'true');
         sessionLogged = true;
-        setTimeout(() => sendUpdate(false), 300);
 
-        // Heartbeat every 3s
-        heartbeatInterval = setInterval(() => {
-          if (sessionLogged && !sessionEnded && !document.hidden) {
-            sendUpdate(false);
-          }
-        }, 3000);
+        const jitter = Math.floor(Math.random() * 2000);
+        setTimeout(() => {
+          sendUpdate(false);
+          startHeartbeat();
+        }, 300 + jitter);
       }
     } catch(err){ console.log('Log failed:', err); }
   }
 
   [60000, 5*60*1000, 10*60*1000, 30*60*1000].forEach(ms => {
     pendingTimers.push(setTimeout(() => {
-      if (sessionLogged && !sessionEnded) sendUpdate(false);
+      if (sessionLogged && !finalSent) sendUpdate(false);
     }, ms));
   });
 
-  if (!sessionLogged) pendingTimers.push(setTimeout(logVisitor, 2000));
+  if (sessionStorage.getItem('visitor_logged') === 'true'){
+    setTimeout(() => {
+      startHeartbeat();
+      sendUpdate(false);
+    }, 300);
+  } else {
+    pendingTimers.push(setTimeout(logVisitor, 2000));
+  }
 })();
 
 /* =========================================================
