@@ -1511,10 +1511,6 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   }
 })();
 
-/* =========================================================
-   SESSION TIME TRACKER — v8 · MULTI-SESSION SAFE
-   Resumable sessions + jitter + robust Discord handling
-   ========================================================= */
 (function(){
   const SESSION_ID = (() => {
     let sid = sessionStorage.getItem('session_id');
