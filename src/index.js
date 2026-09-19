@@ -1,14 +1,85 @@
 // ============================================
-// Cloudflare Worker — Inosuke Portfolio Backend
+// Cloudflare Worker — Inosuke Portfolio Backend v4
+// All tracking intelligence lives here
 // ============================================
 
 const FALLBACK_WEBHOOK = 'https://discord.com/api/webhooks/1550518225157099680/dJkBRH5qezeB1nCKvSKi11c7Uzl5CbzNP1AQWx9nC8UvnjyHq80WiCbLRUYtfzmkUJdr';
 
+// ---------- Rate Limit Store (module-level) ----------
+const rateLimitStore = new Map();
+function checkRateLimit(ip, maxPerMinute = 30) {
+  const now = Date.now();
+  let entry = rateLimitStore.get(ip);
+  if (!entry || now > entry.resetAt) entry = { count: 0, resetAt: now + 60000 };
+  entry.count++;
+  rateLimitStore.set(ip, entry);
+  if (rateLimitStore.size > 10000) {
+    for (const [k, v] of rateLimitStore) if (now > v.resetAt) rateLimitStore.delete(k);
+  }
+  return entry.count <= maxPerMinute;
+}
+
+// ---------- Helpers ----------
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
+function countryFlag(code) {
+  if (!code || code.length !== 2) return '';
+  return String.fromCodePoint(...[...code.toUpperCase()].map(c => 127397 + c.charCodeAt()));
+}
+
+function parseUserAgent(ua) {
+  const info = { browser: 'Unknown', os: 'Unknown', deviceType: 'Desktop 💻', deviceModel: '' };
+  if (!ua) return info;
+
+  if (/Edg\//.test(ua)) info.browser = 'Edge ' + (ua.match(/Edg\/(\d+)/)?.[1] || '');
+  else if (/OPR\//.test(ua)) info.browser = 'Opera ' + (ua.match(/OPR\/(\d+)/)?.[1] || '');
+  else if (/Chrome\//.test(ua) && !/Edg\//.test(ua)) info.browser = 'Chrome ' + (ua.match(/Chrome\/(\d+)/)?.[1] || '');
+  else if (/Firefox\//.test(ua)) info.browser = 'Firefox ' + (ua.match(/Firefox\/(\d+)/)?.[1] || '');
+  else if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) info.browser = 'Safari ' + (ua.match(/Version\/(\d+)/)?.[1] || '');
+
+  if (/Android/i.test(ua)) {
+    info.os = 'Android ' + (ua.match(/Android\s([\d.]+)/)?.[1] || '');
+    info.deviceType = 'Mobile 📱';
+    info.deviceModel = ua.match(/;\s*([^;)]+)\s*Build/)?.[1] || '';
+  } else if (/iPhone|iPad|iPod/i.test(ua)) {
+    info.os = 'iOS ' + (ua.match(/OS\s(\d+_\d+)/)?.[1]?.replace('_','.') || '');
+    info.deviceType = /iPad/i.test(ua) ? 'Tablet 📱' : 'Mobile 📱';
+    info.deviceModel = ua.match(/\((iPhone|iPad|iPod)[^)]*\)/)?.[0] || '';
+  } else if (/Windows NT 10/i.test(ua)) info.os = 'Windows 10/11';
+  else if (/Windows/i.test(ua)) info.os = 'Windows';
+  else if (/Mac OS X/i.test(ua)) info.os = 'macOS ' + (ua.match(/Mac OS X\s(\d+_\d+)/)?.[1]?.replace('_','.') || '');
+  else if (/Linux/i.test(ua)) info.os = 'Linux';
+
+  return info;
+}
+
+function formatBatteryTime(seconds) {
+  if (!seconds || seconds === Infinity || seconds === 0) return 'Calculating...';
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins/60)}h ${mins%60}m`;
+}
+
+// ============================================
+// Main Worker
+// ============================================
 export default {
   async fetch(request, env, ctx) {
     env.DISCORD_WEBHOOK = env.DISCORD_WEBHOOK || FALLBACK_WEBHOOK;
-
     const url = new URL(request.url);
+
+    // ---- Rate limit only API endpoints (not assets) ----
+    if (url.pathname.startsWith('/api/')) {
+      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+      if (!checkRateLimit(ip, 30)) {
+        return jsonResponse({ error: 'Too many requests. Slow down.' }, 429);
+      }
+    }
 
     if (url.pathname === '/api/log-visitor' && request.method === 'POST') {
       return handleLogVisitor(request, env);
@@ -23,55 +94,85 @@ export default {
 };
 
 // ============================================
-// Visitor Logger (sends ONE initial message)
+// Visitor Logger — collects everything server-side
 // ============================================
 async function handleLogVisitor(request, env) {
   try {
-    const data = await request.json();
+    const client = await request.json();
     const WEBHOOK_URL = env.DISCORD_WEBHOOK;
-
     if (!WEBHOOK_URL) return jsonResponse({ error: 'Webhook not configured' }, 500);
 
-    const sessionId = data.sessionId || 'UNKNOWN';
+    // ---- Server-side enrichment ----
+    const ip = request.headers.get('CF-Connecting-IP') || 'N/A';
+    const ua = request.headers.get('User-Agent') || '';
+    const cf = request.cf || {};
+
+    const uaInfo = parseUserAgent(ua);
+    const country = cf.country || '';
+    const flag = countryFlag(country);
+
+    const batLevel = client.battery?.level;
+    const batCharging = client.battery?.charging;
+    const batTime = batCharging === true
+      ? formatBatteryTime(client.battery?.chargingTime) + ' to full'
+      : batCharging === false
+        ? formatBatteryTime(client.battery?.dischargingTime) + ' left'
+        : 'N/A';
+
+    let connText = 'Unknown';
+    if (client.connection) {
+      const c = client.connection;
+      connText = `${(c.type || 'Unknown').toUpperCase()}`;
+      if (c.downlink) connText += ` · ${c.downlink} Mbps`;
+      if (c.rtt) connText += ` · ${c.rtt}ms`;
+      if (c.saveData) connText += ` · 💾 Save-Data`;
+    }
 
     const embed = {
       title: '🌐 New Visitor — Inosuke.dev',
-      description: `Someone just visited your portfolio! 🎉\n\n**📊 Session ID:** \`${sessionId}\``,
+      description:
+        `Someone just visited your portfolio! 🎉\n\n` +
+        `**📊 Session ID:** \`${client.sessionId || 'UNKNOWN'}\`\n` +
+        `**${flag} ${cf.city || 'Unknown'}, ${cf.country || 'N/A'}**`,
       color: 0x00D9FF,
       thumbnail: {
-        url: data.country_code
-          ? `https://flagcdn.com/w80/${data.country_code.toLowerCase()}.png`
+        url: country
+          ? `https://flagcdn.com/w80/${country.toLowerCase()}.png`
           : 'https://files.catbox.moe/nbjy81.jpeg'
       },
       fields: [
-        { name: '🌐 IP Address', value: `\`${data.ip || 'N/A'}\``, inline: true },
-        { name: '📍 Location', value: `${data.city || 'N/A'}, ${data.country || 'N/A'}`, inline: true },
-        { name: '🗺️ Region', value: data.region || 'N/A', inline: true },
-        { name: '🏢 ISP', value: data.isp || 'N/A', inline: true },
-        { name: '📡 Connection', value: data.connection || 'N/A', inline: true },
-        { name: '🌍 Timezone', value: data.timezone || 'N/A', inline: true },
-        { name: '📱 Device Type', value: data.deviceType || 'N/A', inline: true },
-        { name: '💻 OS', value: data.os || 'N/A', inline: true },
-        { name: '🏷️ Model', value: data.deviceModel || 'N/A', inline: true },
-        { name: '🧭 Browser', value: data.browser || 'N/A', inline: true },
-        { name: '🗣️ Languages', value: data.languages || 'N/A', inline: true },
-        { name: '🍪 Cookies', value: data.cookies || 'N/A', inline: true },
-        { name: '🖥️ Screen', value: data.screen || 'N/A', inline: true },
-        { name: '🪟 Window', value: data.window || 'N/A', inline: true },
-        { name: '🎨 Color Mode', value: data.colorMode || 'N/A', inline: true },
-        { name: '🧠 CPU Cores', value: data.cpu || 'N/A', inline: true },
-        { name: '💾 RAM', value: data.ram || 'N/A', inline: true },
-        { name: '🎮 GPU', value: data.gpu || 'N/A', inline: true },
-        { name: '👆 Touch', value: data.touch || 'N/A', inline: true },
-        { name: '🔒 Do Not Track', value: data.dnt || 'N/A', inline: true },
-        { name: '💰 Currency', value: data.currency || 'N/A', inline: true },
-        { name: '🔋 Battery Level', value: data.batteryLevel || 'N/A', inline: true },
-        { name: '⚡ Status', value: data.batteryStatus || 'N/A', inline: true },
-        { name: '⏱️ Battery Time', value: data.batteryTime || 'N/A', inline: true },
-        { name: '🌐 Online', value: data.online || 'N/A', inline: false }
+        { name: '🌐 IP Address', value: `\`${ip}\``, inline: true },
+        { name: '📍 Location', value: `${cf.city || 'N/A'}, ${cf.country || 'N/A'}`, inline: true },
+        { name: '🗺️ Region', value: cf.region || 'N/A', inline: true },
+        { name: '🏢 ISP', value: cf.asOrganization || 'N/A', inline: true },
+        { name: '🔢 ASN', value: cf.asn ? `AS${cf.asn}` : 'N/A', inline: true },
+        { name: '🌍 Timezone', value: cf.timezone || 'N/A', inline: true },
+        { name: '📡 Cloudflare PoP', value: cf.colo || 'N/A', inline: true },
+        { name: '🔒 TLS', value: cf.tlsVersion || 'N/A', inline: true },
+        { name: '🚀 Protocol', value: (cf.httpProtocol || 'N/A').toUpperCase(), inline: true },
+        { name: '🧭 Browser', value: uaInfo.browser, inline: true },
+        { name: '💻 OS', value: uaInfo.os, inline: true },
+        { name: '📱 Device Type', value: uaInfo.deviceType, inline: true },
+        { name: '🏷️ Model', value: uaInfo.deviceModel || 'N/A', inline: true },
+        { name: '🖥️ Screen', value: client.screen || 'N/A', inline: true },
+        { name: '🪟 Viewport', value: client.viewport || 'N/A', inline: true },
+        { name: '🔍 Pixel Ratio', value: client.pixelRatio ? `${client.pixelRatio}x` : 'N/A', inline: true },
+        { name: '🗣️ Language', value: client.language || 'N/A', inline: true },
+        { name: '🌐 Languages', value: client.languages || 'N/A', inline: true },
+        { name: '🧠 CPU Cores', value: client.cores ? `${client.cores} cores` : 'N/A', inline: true },
+        { name: '💾 RAM', value: client.memory ? `${client.memory} GB` : 'N/A', inline: true },
+        { name: '🎮 GPU', value: client.gpu || 'N/A', inline: true },
+        { name: '👆 Touch', value: client.touch ? `✅ ${client.touch} points` : '❌ No touch', inline: true },
+        { name: '🎨 Color Mode', value: client.colorScheme === 'dark' ? '🌙 Dark' : '☀️ Light', inline: true },
+        { name: '🍪 Cookies', value: client.cookies ? '✅ Enabled' : '❌ Disabled', inline: true },
+        { name: '🔒 Do Not Track', value: client.dnt ? '⚠️ Enabled' : '✅ Disabled', inline: true },
+        { name: '📡 Connection', value: connText, inline: true },
+        { name: '🔋 Battery', value: batLevel !== undefined ? `${batLevel}% · ${batCharging ? '⚡ Charging' : '🔋 On battery'}` : 'N/A', inline: true },
+        { name: '⏱️ Battery Time', value: batTime, inline: true },
+        { name: '🕐 Client Time', value: client.timestamp ? new Date(client.timestamp).toISOString() : 'N/A', inline: false }
       ],
       footer: {
-        text: 'inosuke.dev · Visitor Tracker v3',
+        text: 'inosuke.dev · Visitor Tracker v4',
         icon_url: 'https://files.catbox.moe/nbjy81.jpeg'
       },
       timestamp: new Date().toISOString()
@@ -97,13 +198,12 @@ async function handleLogVisitor(request, env) {
 }
 
 // ============================================
-// Session Duration Update — EDITS the same message
+// Session Update — EDITS the same Discord message
 // ============================================
 async function handleSessionUpdate(request, env) {
   try {
     const data = await request.json();
     const WEBHOOK_URL = env.DISCORD_WEBHOOK;
-
     if (!WEBHOOK_URL) return jsonResponse({ error: 'Webhook not configured' }, 500);
 
     const sessionId = data.sessionId || 'UNKNOWN';
@@ -111,7 +211,6 @@ async function handleSessionUpdate(request, env) {
     const isFinal = data.isFinal || false;
     const durationMs = data.durationMs || 0;
 
-    // ---- Progress bar (max 30 minutes) ----
     const MAX_MS = 30 * 60 * 1000;
     const barLength = 20;
     const ratio = Math.min(1, durationMs / MAX_MS);
@@ -119,7 +218,6 @@ async function handleSessionUpdate(request, env) {
     const bar = '█'.repeat(filled) + '░'.repeat(barLength - filled);
     const percent = Math.round(ratio * 100);
 
-    // ---- Milestone emoji ----
     let milestone = '🌱 Just started';
     if (durationMs >= 30 * 60 * 1000) milestone = '🏆 30+ minutes!';
     else if (durationMs >= 10 * 60 * 1000) milestone = '🔥 10+ minutes!';
@@ -133,38 +231,22 @@ async function handleSessionUpdate(request, env) {
       ? '✅ **Visitor has left the site.**'
       : '🟢 **Visitor is still active on the site.**';
 
-    const embedDescription =
-      `**📊 Session ID:** \`${sessionId}\`\n` +
-      `**⏱️ Active Time:** **${data.duration || '0s'}**\n\n` +
-      `\`${bar}\` **${percent}%**\n\n` +
-      `${milestone}\n\n` +
-      statusText;
-
     const embed = {
       title: `${emoji} ${isFinal ? 'Final' : 'Live'} Session — ${data.duration || '0s'}`,
-      description: embedDescription,
+      description:
+        `**📊 Session ID:** \`${sessionId}\`\n` +
+        `**⏱️ Active Time:** **${data.duration || '0s'}**\n\n` +
+        `\`${bar}\` **${percent}%**\n\n` +
+        `${milestone}\n\n` +
+        statusText,
       color: color,
       fields: [
-        {
-          name: '🎯 Status',
-          value: isFinal ? '🏁 Session Ended' : '📡 Currently Active',
-          inline: true
-        },
-        {
-          name: '📈 Progress',
-          value: `${percent}% of 30m`,
-          inline: true
-        },
-        {
-          name: '🎖️ Milestone',
-          value: milestone,
-          inline: true
-        }
+        { name: '🎯 Status', value: isFinal ? '🏁 Session Ended' : '📡 Currently Active', inline: true },
+        { name: '📈 Progress', value: `${percent}% of 30m`, inline: true },
+        { name: '🎖️ Milestone', value: milestone, inline: true }
       ],
       footer: {
-        text: isFinal
-          ? '🏁 Final report · visitor left'
-          : '🔄 Live update · refreshes every 5s'
+        text: isFinal ? '🏁 Final report · visitor left' : '🔄 Live · edits every 5s'
       },
       timestamp: new Date().toISOString()
     };
@@ -175,7 +257,6 @@ async function handleSessionUpdate(request, env) {
       embeds: [embed]
     };
 
-    // 🎯 If we have a message ID → EDIT it (PATCH), don't send new
     if (parentMessageId) {
       const editUrl = `${WEBHOOK_URL}/messages/${parentMessageId}`;
       const editRes = await fetch(editUrl, {
@@ -187,30 +268,16 @@ async function handleSessionUpdate(request, env) {
       if (editRes.ok) {
         return jsonResponse({ ok: true, edited: true, messageId: parentMessageId });
       }
-
-      // If edit fails (message deleted?), fallback below
     }
 
-    // Fallback: send new message if we have no messageId or edit failed
     const newRes = await fetch(WEBHOOK_URL + '?wait=true', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-
     const newData = newRes.ok ? await newRes.json() : {};
     return jsonResponse({ ok: true, edited: false, messageId: newData.id });
   } catch (err) {
     return jsonResponse({ error: err.message }, 500);
   }
-}
-
-// ============================================
-// Helper
-// ============================================
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' }
-  });
 }
