@@ -1,6 +1,6 @@
 // ============================================
-// Cloudflare Worker — Inosuke Portfolio Backend v5
-// SEPARATE messages: Visitor Log + Live Session
+// Cloudflare Worker — Inosuke Portfolio Backend v6
+// Fixed: Discord 25-field limit + robust session edit
 // ============================================
 
 const FALLBACK_WEBHOOK = 'https://discord.com/api/webhooks/1550518225157099680/dJkBRH5qezeB1nCKvSKi11c7Uzl5CbzNP1AQWx9nC8UvnjyHq80WiCbLRUYtfzmkUJdr';
@@ -214,7 +214,7 @@ async function handleLogVisitor(request, env) {
         }
       ],
       footer: {
-        text: 'inosuke.dev · Visitor Log v5',
+        text: 'inosuke.dev · Visitor Log v6',
         icon_url: 'https://files.catbox.moe/nbjy81.jpeg'
       },
       timestamp: new Date().toISOString()
@@ -243,7 +243,7 @@ async function handleLogVisitor(request, env) {
 }
 
 // ============================================
-// MESSAGE 2: Live Session (own message — EDITED every 5s)
+// MESSAGE 2: Live Session (own message — EDITED every 6s)
 // ============================================
 async function handleSessionUpdate(request, env) {
   try {
@@ -276,6 +276,9 @@ async function handleSessionUpdate(request, env) {
       ? '✅ **Visitor has left the site.**'
       : '🟢 **Visitor is still active on the site.**';
 
+    const now = new Date();
+    const timeStr = now.toISOString().slice(11, 19);
+
     const embed = {
       title: `${emoji} ${isFinal ? 'Final' : 'Live'} Session — ${data.duration || '0s'}`,
       description:
@@ -283,7 +286,8 @@ async function handleSessionUpdate(request, env) {
         `**⏱️ Active Time:** **${data.duration || '0s'}**\n\n` +
         `\`${bar}\` **${percent}%**\n\n` +
         `${milestone}\n\n` +
-        statusText,
+        `${statusText}\n` +
+        `🕐 *Last update: \`${timeStr}\` UTC*`,
       color: color,
       fields: [
         { name: '🎯 Status', value: isFinal ? '🏁 Session Ended' : '📡 Currently Active', inline: true },
@@ -291,9 +295,9 @@ async function handleSessionUpdate(request, env) {
         { name: '🎖️ Milestone', value: milestone, inline: true }
       ],
       footer: {
-        text: isFinal ? '🏁 Final report · visitor left' : '🔄 Live · edits every 5s'
+        text: isFinal ? '🏁 Final report · visitor left' : '🔄 Live · edits every 6s'
       },
-      timestamp: new Date().toISOString()
+      timestamp: now.toISOString()
     };
 
     const body = {
@@ -302,7 +306,7 @@ async function handleSessionUpdate(request, env) {
       embeds: [embed]
     };
 
-    // 🎯 If we already have a session message ID → EDIT it
+    // 🎯 Try EDIT first
     if (sessionMessageId) {
       const editRes = await fetch(`${WEBHOOK_URL}/messages/${sessionMessageId}`, {
         method: 'PATCH',
@@ -313,9 +317,13 @@ async function handleSessionUpdate(request, env) {
       if (editRes.ok) {
         return jsonResponse({ ok: true, edited: true, sessionMessageId });
       }
+
+      if (editRes.status === 429) {
+        return jsonResponse({ ok: false, error: 'Rate limited' }, 429);
+      }
     }
 
-    // First time → POST new session message
+    // Create NEW session message
     const newRes = await fetch(WEBHOOK_URL + '?wait=true', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
