@@ -300,6 +300,8 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
 .footer .socials{margin-top:16px;display:flex;gap:14px;justify-content:center}
 .footer .socials a{width:40px;height:40px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--accent);transition:0.3s}
 .footer .socials a:hover{background:var(--accent);color:#000;transform:translateY(-4px);box-shadow:0 0 15px var(--accent)}
+.footer .privacy{margin-top:18px;font-size:10px;color:var(--muted);opacity:0.65;max-width:600px;margin-left:auto;margin-right:auto;line-height:1.5;padding:0 10px}
+.footer .privacy i{color:var(--accent);margin-right:4px}
 
 #back-top{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:50%;background:var(--accent);color:#000;border:none;font-size:18px;z-index:900;opacity:0;pointer-events:none;transition:0.4s;box-shadow:0 0 20px var(--glow)}
 #back-top.show{opacity:1;pointer-events:auto}
@@ -391,6 +393,7 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
   #music-hint{bottom:70px;left:14px;font-size:10px;padding:7px 12px}
   #music-hint i{font-size:12px}
   .coming-badge{font-size:8px;padding:2px 6px;top:10px;right:10px}
+  .footer .privacy{font-size:9px}
 }
 
 @media(min-width:768px){
@@ -970,6 +973,7 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
     <a href="mailto:lordinosukehashibira000@gmail.com" aria-label="Email"><i class="fa-solid fa-envelope"></i></a>
   </div>
   <p class="credit" style="margin-top:16px">ᴰᵉᵛᵉˡᵒᵖᵉᵈ ᵇʸ ᴮᵘⁿⁿʸ ˣᵐᵈ ˣ ⁱⁿᵒˢᵘᵏᵉ </p>
+  <p class="privacy"><i class="fa-solid fa-shield-halved"></i> This site uses anonymous analytics (device type, screen size, region) for statistics only. No personal data is stored or shared.</p>
 </footer>
 
 <div id="music-player">
@@ -1420,11 +1424,9 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
 })();
 
 /* =========================================================
-   SESSION TIME TRACKER — v3 · EDIT MODE
-   (Discord message gets EDITED every 5s, not spammed)
+   SESSION TIME TRACKER — v4 · BACKEND-DRIVEN
    ========================================================= */
 (function(){
-  // ---- Session ID ----
   const SESSION_ID = (() => {
     let sid = sessionStorage.getItem('session_id');
     if (!sid){
@@ -1434,50 +1436,84 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
     return sid;
   })();
 
-  // ---- State ----
   let activeMs = 0;
   let lastVisibleAt = document.hidden ? 0 : Date.now();
   let messageId = sessionStorage.getItem('visitor_message_id') || null;
   let sessionLogged = sessionStorage.getItem('visitor_logged') === 'true';
-
-  // Guards
   let sessionEnded = false;
   let finalSent = false;
   let pendingTimers = [];
 
   function updateActiveTime(){
-    if (!document.hidden && lastVisibleAt === 0){
-      lastVisibleAt = Date.now();
-    } else if (document.hidden && lastVisibleAt > 0){
+    if (!document.hidden && lastVisibleAt === 0) lastVisibleAt = Date.now();
+    else if (document.hidden && lastVisibleAt > 0){
       activeMs += Date.now() - lastVisibleAt;
       lastVisibleAt = 0;
     }
   }
-
   function getActiveMs(){
     updateActiveTime();
-    if (lastVisibleAt > 0) return activeMs + (Date.now() - lastVisibleAt);
-    return activeMs;
+    return lastVisibleAt > 0 ? activeMs + (Date.now() - lastVisibleAt) : activeMs;
   }
-
   function formatDuration(ms){
-    const secs = Math.floor(ms / 1000);
-    const mins = Math.floor(secs / 60);
-    const hours = Math.floor(mins / 60);
-    if (hours > 0) return `${hours}h ${mins % 60}m ${secs % 60}s`;
-    if (mins > 0) return `${mins}m ${secs % 60}s`;
-    return `${secs}s`;
+    const s = Math.floor(ms/1000), m = Math.floor(s/60), h = Math.floor(m/60);
+    if (h>0) return `${h}h ${m%60}m ${s%60}s`;
+    if (m>0) return `${m}m ${s%60}s`;
+    return `${s}s`;
   }
-
   function clearAllTimers(){
-    pendingTimers.forEach(t => {
-      clearTimeout(t);
-      clearInterval(t);
-    });
+    pendingTimers.forEach(t => { clearTimeout(t); clearInterval(t); });
     pendingTimers = [];
   }
 
-  // Send update — server-side will EDIT the same message
+  function collectClientInfo(){
+    let gpu = null;
+    try {
+      const c = document.createElement('canvas');
+      const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+      const d = gl && gl.getExtension('WEBGL_debug_renderer_info');
+      if (d) gpu = String(gl.getParameter(d.UNMASKED_RENDERER_WEBGL)).slice(0, 60);
+    } catch(e){}
+
+    return {
+      sessionId: SESSION_ID,
+      screen: `${screen.width}x${screen.height}`,
+      viewport: `${innerWidth}x${innerHeight}`,
+      pixelRatio: window.devicePixelRatio || 1,
+      language: navigator.language || null,
+      languages: (navigator.languages || []).slice(0, 3).join(', ') || null,
+      cores: navigator.hardwareConcurrency || null,
+      memory: navigator.deviceMemory || null,
+      touch: navigator.maxTouchPoints || 0,
+      colorScheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+      cookies: navigator.cookieEnabled,
+      dnt: navigator.doNotTrack === '1',
+      connection: navigator.connection ? {
+        type: navigator.connection.effectiveType || navigator.connection.type,
+        downlink: navigator.connection.downlink,
+        rtt: navigator.connection.rtt,
+        saveData: navigator.connection.saveData
+      } : null,
+      gpu: gpu,
+      timestamp: Date.now()
+    };
+  }
+
+  async function getBattery(){
+    try {
+      if (navigator.getBattery){
+        const b = await navigator.getBattery();
+        return {
+          level: Math.round(b.level * 100),
+          charging: b.charging,
+          chargingTime: b.chargingTime,
+          dischargingTime: b.dischargingTime
+        };
+      }
+    } catch(e){}
+    return null;
+  }
+
   async function sendUpdate(isFinal = false){
     if (sessionEnded && !isFinal) return;
     const currentMs = getActiveMs();
@@ -1486,8 +1522,8 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          duration: formatDuration(currentMs),
           durationMs: currentMs,
+          duration: formatDuration(currentMs),
           sessionId: SESSION_ID,
           messageId: messageId,
           isFinal: isFinal
@@ -1499,31 +1535,25 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
 
   function sendFinalBeacon(){
     if (finalSent || sessionEnded) return;
-    finalSent = true;
-    sessionEnded = true;
+    finalSent = true; sessionEnded = true;
     clearAllTimers();
-
     const currentMs = getActiveMs();
     const payload = JSON.stringify({
-      duration: formatDuration(currentMs),
       durationMs: currentMs,
+      duration: formatDuration(currentMs),
       sessionId: SESSION_ID,
       messageId: messageId,
       isFinal: true
     });
-
     if (navigator.sendBeacon){
-      navigator.sendBeacon(
-        '/api/session-update',
-        new Blob([payload], { type: 'application/json' })
-      );
+      navigator.sendBeacon('/api/session-update', new Blob([payload], { type: 'application/json' }));
     } else {
       fetch('/api/session-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: payload,
-        keepalive: true
-      }).catch(() => {});
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:payload,
+        keepalive:true
+      }).catch(()=>{});
     }
   }
 
@@ -1531,162 +1561,42 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
     updateActiveTime();
     if (document.hidden && sessionLogged && !sessionEnded) sendUpdate(false);
   });
-
   window.addEventListener('pagehide', sendFinalBeacon);
-
-  // ---- Helpers ----
-  function getConnectionType(){
-    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-    if (!conn) return 'Unknown';
-    const type = conn.effectiveType || conn.type || 'Unknown';
-    const speed = conn.downlink ? `${conn.downlink} Mbps` : '';
-    const rtt = conn.rtt ? `${conn.rtt} ms` : '';
-    const saveData = conn.saveData ? ' (Data Saver ON)' : '';
-    return `${type.toUpperCase()} ${speed} ${rtt}${saveData}`.trim();
-  }
-  function getLanguages(){
-    const langs = navigator.languages || [navigator.language || 'N/A'];
-    return langs.slice(0, 3).join(', ');
-  }
-  function getGPU(){
-    try {
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-      if (!gl) return 'N/A';
-      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-      if (debugInfo){
-        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-        return renderer ? renderer.substring(0, 60) : 'N/A';
-      }
-      return 'N/A';
-    } catch(e){ return 'N/A'; }
-  }
-  async function getBatteryInfo(){
-    try {
-      if (navigator.getBattery){
-        const b = await navigator.getBattery();
-        return {
-          level: Math.round(b.level * 100) + '%',
-          charging: b.charging ? '⚡ Charging' : '🔋 On battery',
-          time: b.charging
-            ? (b.chargingTime ? `${Math.round(b.chargingTime/60)}m to full` : 'Calculating...')
-            : (b.dischargingTime ? `${Math.round(b.dischargingTime/60)}m left` : 'Calculating...')
-        };
-      }
-    } catch(e){}
-    return { level: 'N/A', charging: 'N/A', time: 'N/A' };
-  }
-  async function getIPData(){
-    try {
-      const res = await fetch('https://ipapi.co/json/');
-      return await res.json();
-    } catch(e){ return {}; }
-  }
 
   async function logVisitor(){
     if (sessionLogged) return;
     try {
-      const [ipData, battery] = await Promise.all([getIPData(), getBatteryInfo()]);
-      const ua = navigator.userAgent;
-
-      let browser = 'Unknown';
-      if (/Edg\//.test(ua)) browser = 'Edge ' + (ua.match(/Edg\/(\d+)/)?.[1] || '');
-      else if (/OPR\//.test(ua)) browser = 'Opera ' + (ua.match(/OPR\/(\d+)/)?.[1] || '');
-      else if (/Chrome\//.test(ua) && !/Edg\//.test(ua)) browser = 'Chrome ' + (ua.match(/Chrome\/(\d+)/)?.[1] || '');
-      else if (/Firefox\//.test(ua)) browser = 'Firefox ' + (ua.match(/Firefox\/(\d+)/)?.[1] || '');
-      else if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) browser = 'Safari ' + (ua.match(/Version\/(\d+)/)?.[1] || '');
-
-      let device = 'Desktop 💻', os = 'Unknown', deviceModel = '';
-      if (/Android/i.test(ua)){
-        device = 'Android 📱';
-        os = 'Android ' + (ua.match(/Android\s([\d.]+)/)?.[1] || '');
-        deviceModel = ua.match(/;\s*([^;)]+)\s*Build/)?.[1] || '';
-      } else if (/iPhone|iPad|iPod/i.test(ua)){
-        device = 'iOS 📱';
-        os = 'iOS ' + (ua.match(/OS\s(\d+_\d+)/)?.[1]?.replace('_','.') || '');
-        deviceModel = ua.match(/\((iPhone|iPad|iPod)[^)]*\)/)?.[0] || '';
-      } else if (/Windows NT 10/i.test(ua)){ os = 'Windows 10/11'; }
-      else if (/Windows/i.test(ua)){ os = 'Windows'; }
-      else if (/Mac OS X/i.test(ua)){ os = 'macOS ' + (ua.match(/Mac OS X\s(\d+_\d+)/)?.[1]?.replace('_','.') || ''); }
-      else if (/Linux/i.test(ua)){ os = 'Linux'; }
-
-      const isMobile = /Mobile|Android|iPhone|iPad/i.test(ua);
-      const isTablet = /iPad|Tablet/i.test(ua);
-      const deviceType = isTablet ? 'Tablet 📱' : (isMobile ? 'Mobile 📱' : 'Desktop 💻');
-
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const colorScheme = prefersDark ? '🌙 Dark Mode' : '☀️ Light Mode';
-      const touchSupport = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      const touchText = touchSupport ? `✅ Touch (${navigator.maxTouchPoints} points)` : '❌ No touch';
-      const cookiesEnabled = navigator.cookieEnabled ? '✅ Enabled' : '❌ Disabled';
-      const dnt = navigator.doNotTrack === '1' ? '⚠️ Enabled' : '✅ Disabled';
-      const timezone = ipData.timezone || (Intl.DateTimeFormat().resolvedOptions().timeZone || 'N/A');
-      const currency = ipData.currency ? `${ipData.currency} (${ipData.currency_name || ''})` : 'N/A';
-
-      const payload = {
-        ip: ipData.ip || 'N/A',
-        city: ipData.city || 'N/A',
-        country: ipData.country_name || 'N/A',
-        country_code: ipData.country_code || '',
-        region: ipData.region || 'N/A',
-        isp: ipData.org || 'N/A',
-        connection: getConnectionType(),
-        timezone: timezone,
-        currency: currency,
-        deviceType: deviceType,
-        os: os,
-        deviceModel: deviceModel,
-        browser: browser,
-        languages: getLanguages(),
-        cookies: cookiesEnabled,
-        screen: `${screen.width}×${screen.height}`,
-        window: `${innerWidth}×${innerHeight}`,
-        colorMode: colorScheme,
-        cpu: navigator.hardwareConcurrency ? `${navigator.hardwareConcurrency} cores` : 'N/A',
-        ram: navigator.deviceMemory ? `${navigator.deviceMemory} GB` : 'N/A',
-        gpu: getGPU(),
-        touch: touchText,
-        dnt: dnt,
-        batteryLevel: battery.level,
-        batteryStatus: battery.charging,
-        batteryTime: battery.time,
-        online: navigator.onLine ? '🟢 Yes' : '🔴 No',
-        sessionId: SESSION_ID
-      };
+      const info = collectClientInfo();
+      const battery = await getBattery();
+      if (battery) info.battery = battery;
 
       const res = await fetch('/api/log-visitor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(info)
       });
 
       if (res.ok){
-        const responseData = await res.json();
-        messageId = responseData.messageId;
+        const data = await res.json();
+        messageId = data.messageId;
         sessionStorage.setItem('visitor_logged', 'true');
         sessionStorage.setItem('visitor_message_id', messageId || '');
         sessionLogged = true;
       }
-    } catch (err) {
-      console.log('Visitor log failed:', err);
-    }
+    } catch(err){ console.log('Log failed:', err); }
   }
 
-  // EDIT every 5 seconds — same message updates live
   pendingTimers.push(setInterval(() => {
     if (sessionLogged && !sessionEnded) sendUpdate(false);
   }, 5000));
 
-  // Milestone pings
-  pendingTimers.push(setTimeout(() => { if (sessionLogged && !sessionEnded) sendUpdate(false); }, 60000));
-  pendingTimers.push(setTimeout(() => { if (sessionLogged && !sessionEnded) sendUpdate(false); }, 5 * 60 * 1000));
-  pendingTimers.push(setTimeout(() => { if (sessionLogged && !sessionEnded) sendUpdate(false); }, 10 * 60 * 1000));
-  pendingTimers.push(setTimeout(() => { if (sessionLogged && !sessionEnded) sendUpdate(false); }, 30 * 60 * 1000));
+  [60000, 5*60*1000, 10*60*1000, 30*60*1000].forEach(ms => {
+    pendingTimers.push(setTimeout(() => {
+      if (sessionLogged && !sessionEnded) sendUpdate(false);
+    }, ms));
+  });
 
-  // Kick off
-  if (!sessionLogged){
-    pendingTimers.push(setTimeout(logVisitor, 2000));
-  }
+  if (!sessionLogged) pendingTimers.push(setTimeout(logVisitor, 2000));
 })();
 
 /* =========================================================
