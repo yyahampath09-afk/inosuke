@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>Inosuke Hasibira | Developer & VTuber</title>
-<link rel="icon" type="image/jpeg" href="https://files.catbox.moe/d3o3n7.jpg">
+<link rel="icon" type="image/jpeg" href="https://files.catbox.moe/whohua.jpg">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
@@ -279,7 +279,10 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
 @keyframes lineIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
 .terminal-body .prompt{color:var(--accent);font-weight:700}
 .terminal-body .cmd{color:#fff}
-.terminal-body .cmd-cat{color:#FF6B9D;font-weight:700;text-shadow:0 0 8px rgba(255,107,157,0.5)}
+.terminal-body .cmd-cat{color:#FF3B30;font-weight:700;text-shadow:0 0 10px rgba(255,59,48,0.7)}
+.terminal-body .cmd-whoami{color:#00E5FF;font-weight:700;text-shadow:0 0 10px rgba(0,229,255,0.6)}
+.terminal-body .cmd-status{color:#FFBD2E;font-weight:700;text-shadow:0 0 10px rgba(255,189,46,0.6)}
+.terminal-body .cmd-scan{color:#B794F6;font-weight:700;text-shadow:0 0 10px rgba(183,148,246,0.6)}
 .terminal-body .cmd-flag{color:#FFBD2E;font-weight:700;text-shadow:0 0 8px rgba(255,189,46,0.5)}
 .terminal-body .cmd-arg{color:#00FFA3;font-weight:500}
 .terminal-body .out{color:#00FFA3}
@@ -439,60 +442,66 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
   .chrono-num{font-size:34px}
 }
 
+/* ===== Horizontal scroll (skills + projects) ===== */
 .horizontal-scroll-section{
   position:relative;overflow:hidden;min-height:100vh;
   display:flex;flex-direction:column;justify-content:center;align-items:stretch;
-  padding:60px 0;margin-top:70px !important;z-index:1;
+  padding:30px 0;margin-top:50px !important;z-index:1;
 }
 .horizontal-scroll-section .section-header{
-  flex-shrink:0;text-align:center;margin-bottom:40px;padding:0 20px;
+  flex-shrink:0;text-align:center;margin-bottom:24px;padding:0 20px;
   position:relative;z-index:5;align-self:center;
 }
 .horizontal-scroll-container{
-  display:flex;flex-wrap:nowrap;gap:30px;padding:0 8vw;
+  display:flex;flex-wrap:nowrap;gap:100px;padding:0 15vw;
   width:max-content;position:relative;z-index:2;
-  align-self:flex-start;
+  align-self:flex-start;align-items:center;
 }
-.horizontal-scroll-panel{flex-shrink:0;width:440px}
-.horizontal-scroll-panel .card{height:100%;min-height:280px;opacity:1 !important;animation:none !important}
-.horizontal-scroll-panel .card i{font-size:34px}
+.horizontal-scroll-panel{flex-shrink:0;width:400px}
 
 .hss-dots{
-  position:absolute;bottom:28px;left:50%;transform:translateX(-50%);
+  position:absolute;bottom:16px;left:50%;transform:translateX(-50%);
   display:flex;gap:8px;z-index:6;opacity:0;transition:opacity 0.4s;
 }
 .horizontal-scroll-section.pinned .hss-dots{opacity:1}
 .hss-dots span{width:8px;height:8px;border-radius:50%;background:rgba(0,217,255,0.25);border:1px solid rgba(0,217,255,0.4);transition:0.3s}
 .hss-dots span.active{background:var(--accent);box-shadow:0 0 10px var(--accent);width:24px;border-radius:10px}
 
-#projects.horizontal-scroll-section{padding-top:80px}
-#projects .horizontal-scroll-container{gap:100px;padding:0 15vw;align-items:center}
+/* Shared card layout for Skills + Projects */
+#skills.horizontal-scroll-section,
+#projects.horizontal-scroll-section{padding-top:30px}
+
+#skills .horizontal-scroll-panel,
 #projects .horizontal-scroll-panel{
-  width:420px;height:440px;position:relative;flex-shrink:0;
+  width:400px;height:400px;position:relative;flex-shrink:0;
   transition: transform 0.7s cubic-bezier(0.4,0,0.2,1);
   transform-origin: center center;
 }
+#skills .horizontal-scroll-panel.active,
 #projects .horizontal-scroll-panel.active{
-  transform: scale(1.08);
+  transform: scale(1.06);
   z-index: 10;
 }
+#skills .horizontal-scroll-panel.active .work-card-front,
 #projects .horizontal-scroll-panel.active .work-card-front{
   border-color: var(--accent);
   box-shadow: 0 0 40px rgba(0,217,255,0.35), 0 20px 40px rgba(0,0,0,0.5);
 }
+#skills .horizontal-scroll-panel.active .work-card-img img,
 #projects .horizontal-scroll-panel.active .work-card-img img{
   filter: grayscale(0%) brightness(1);
   transform: scale(1);
 }
+#skills .horizontal-scroll-panel.active .work-card-arrow,
 #projects .horizontal-scroll-panel.active .work-card-arrow{
   transform: translate(4px,-4px);
   text-shadow: 0 0 15px var(--accent);
 }
 
 .works-watermark{
-  position:absolute;top:30px;left:60px;z-index:1;
+  position:absolute;top:20px;left:60px;z-index:1;
   font-family:'JetBrains Mono',monospace;
-  font-size:96px;font-weight:900;letter-spacing:-3px;line-height:1;
+  font-size:80px;font-weight:900;letter-spacing:-3px;line-height:1;
   color:transparent;
   -webkit-text-stroke:1.5px rgba(0,217,255,0.18);
   pointer-events:none;user-select:none;
@@ -505,13 +514,16 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
   transform:rotate(2.5deg);
   transition:transform 0.6s cubic-bezier(0.4,0,0.2,1);z-index:0;
 }
+#skills .horizontal-scroll-panel:nth-child(2) .work-card-back,
 #projects .horizontal-scroll-panel:nth-child(2) .work-card-back{transform:rotate(-2.5deg);background:linear-gradient(135deg, rgba(255,77,157,0.08), rgba(0,217,255,0.06))}
+#skills .horizontal-scroll-panel:nth-child(3) .work-card-back,
 #projects .horizontal-scroll-panel:nth-child(3) .work-card-back{transform:rotate(2deg)}
+#skills .horizontal-scroll-panel:nth-child(4) .work-card-back,
 #projects .horizontal-scroll-panel:nth-child(4) .work-card-back{transform:rotate(-2deg);background:linear-gradient(135deg, rgba(255,189,46,0.08), rgba(0,217,255,0.06))}
 
 .work-card-front{
   position:absolute;inset:0;background:var(--card);border:1px solid var(--border);
-  border-radius:16px;padding:24px;display:flex;flex-direction:column;justify-content:space-between;
+  border-radius:16px;padding:20px;display:flex;flex-direction:column;justify-content:space-between;
   transform:translateY(0);
   transition:transform 0.6s cubic-bezier(0.4,0,0.2,1), border-color 0.3s, box-shadow 0.5s;
   z-index:1;overflow:hidden;
@@ -521,17 +533,20 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
   background:radial-gradient(circle at 50% 0%, rgba(0,217,255,0.1), transparent 60%);
   opacity:0;transition:opacity 0.5s;pointer-events:none;
 }
+#skills .horizontal-scroll-panel:hover .work-card-back,
 #projects .horizontal-scroll-panel:hover .work-card-back{transform:rotate(0deg) !important}
+#skills .horizontal-scroll-panel:hover .work-card-front,
 #projects .horizontal-scroll-panel:hover .work-card-front{
   transform:translateY(-12px);border-color:var(--accent);
   box-shadow:0 0 40px rgba(0,217,255,0.35), 0 30px 60px rgba(0,0,0,0.5);
 }
+#skills .horizontal-scroll-panel:hover .work-card-front::before,
 #projects .horizontal-scroll-panel:hover .work-card-front::before{opacity:1}
 
 .work-card-img{
-  width:100%;height:190px;overflow:hidden;
+  width:100%;height:160px;overflow:hidden;
   background:linear-gradient(135deg, #0e2238, #06111e);
-  border-radius:12px;margin-bottom:14px;position:relative;
+  border-radius:12px;margin-bottom:12px;position:relative;
   border:1px solid rgba(0,217,255,0.2);
 }
 .work-card-img img{
@@ -539,32 +554,33 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
   filter:grayscale(100%) brightness(0.65);transform:scale(1.1);
   transition:filter 0.7s ease, transform 0.7s ease;
 }
+#skills .horizontal-scroll-panel:hover .work-card-img img,
 #projects .horizontal-scroll-panel:hover .work-card-img img{filter:grayscale(0%) brightness(1);transform:scale(1)}
 .work-card-img .icon-center{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg, #0e2238, #06111e)}
-.work-card-img .icon-center i{font-size:66px}
+.work-card-img .icon-center i{font-size:56px}
 
 .work-card-badge{
-  position:absolute;top:12px;right:12px;
+  position:absolute;top:10px;right:10px;
   background:rgba(0,217,255,0.15);color:var(--accent);
   font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;
-  padding:4px 10px;border-radius:4px;border:1px solid var(--accent);
+  padding:3px 8px;border-radius:4px;border:1px solid var(--accent);
   letter-spacing:1.2px;text-transform:uppercase;
 }
-.work-card-title{font-size:20px;font-weight:800;margin-bottom:6px;color:var(--text);line-height:1.2}
-.work-card-desc{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);line-height:1.5}
-.work-card-footer{display:flex;justify-content:space-between;align-items:flex-end;border-top:1px solid rgba(0,217,255,0.2);padding-top:12px;margin-top:12px}
-.work-card-num{font-family:'JetBrains Mono',monospace;font-size:30px;font-weight:900;color:rgba(0,217,255,0.2);letter-spacing:-1px;line-height:1}
-.work-card-arrow{font-size:18px;color:var(--accent);transition:transform 0.4s ease;display:inline-flex;align-items:center;justify-content:center}
-.work-card-front .coming-badge{top:12px;left:12px;right:auto}
+.work-card-title{font-size:18px;font-weight:800;margin-bottom:4px;color:var(--text);line-height:1.2}
+.work-card-desc{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);line-height:1.5}
+.work-card-footer{display:flex;justify-content:space-between;align-items:flex-end;border-top:1px solid rgba(0,217,255,0.2);padding-top:10px;margin-top:10px}
+.work-card-num{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:900;color:rgba(0,217,255,0.2);letter-spacing:-1px;line-height:1}
+.work-card-arrow{font-size:16px;color:var(--accent);transition:transform 0.4s ease;display:inline-flex;align-items:center;justify-content:center}
+.work-card-front .coming-badge{top:10px;left:10px;right:auto}
 
-.works-view-all{flex-shrink:0;width:220px;display:flex;align-items:center;justify-content:center;height:440px}
+.works-view-all{flex-shrink:0;width:200px;display:flex;align-items:center;justify-content:center;height:400px}
 .works-view-all a{
-  width:130px;height:130px;border-radius:50%;border:1.5px solid var(--accent);
-  display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;
-  color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;
+  width:120px;height:120px;border-radius:50%;border:1.5px solid var(--accent);
+  display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;
+  color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
   letter-spacing:2px;transition:all 0.4s ease;text-align:center;
 }
-.works-view-all a i{font-size:18px;transition:transform 0.4s}
+.works-view-all a i{font-size:16px;transition:transform 0.4s}
 .works-view-all a:hover{background:var(--accent);color:#000;transform:scale(1.05);box-shadow:0 0 30px var(--glow)}
 .works-view-all a:hover i{transform:translate(4px,-4px)}
 
@@ -578,20 +594,22 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
 @media(min-width:768px){#contact .grid{grid-template-columns:repeat(3,1fr);gap:24px}}
 
 @media(max-width:767px){
-  .horizontal-scroll-section{min-height:auto;padding:60px 0;margin-top:45px !important}
-  .horizontal-scroll-section .section-header{margin-bottom:24px}
+  .horizontal-scroll-section{min-height:auto;padding:50px 0;margin-top:35px !important}
+  .horizontal-scroll-section .section-header{margin-bottom:20px}
   .horizontal-scroll-container{flex-direction:column;width:100%;padding:0 16px;gap:20px;align-self:stretch}
   .horizontal-scroll-panel{width:100%;height:auto}
-  .horizontal-scroll-panel .card{min-height:auto;padding:18px}
   .hss-dots{display:none}
-  #projects .horizontal-scroll-container{gap:20px}
+  #skills .horizontal-scroll-panel,
   #projects .horizontal-scroll-panel{width:100%;height:auto;min-height:auto;transform: none !important}
+  #skills .horizontal-scroll-panel.active,
   #projects .horizontal-scroll-panel.active{transform: none !important}
   .work-card-back{display:none}
-  .work-card-front{position:relative;transform:none !important}
-  .work-card-img{height:200px}
+  .work-card-front{position:relative;transform:none !important;padding:18px}
+  .work-card-img{height:180px}
+  .work-card-title{font-size:17px}
   .works-watermark{display:none}
-  .works-view-all{width:100%;height:auto;padding:20px 0}
+  .works-view-all{width:100%;height:auto;padding:16px 0}
+  .works-view-all a{width:110px;height:110px;font-size:10px}
   #contact.section{min-height:auto;padding:60px 0}
 }
 </style>
@@ -805,45 +823,92 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
   </section>
 </div>
 
+<!-- ============ TECHNICAL SKILLS (now styled like Projects) ============ -->
 <section id="skills" class="horizontal-scroll-section">
   <div class="section-header">
     <h2><span class="bracket">// </span>Technical Skills</h2>
     <p>What I'm currently learning</p>
   </div>
 
+  <div class="works-watermark" aria-hidden="true">SKILLS</div>
+
   <div class="horizontal-scroll-container">
     <div class="horizontal-scroll-panel">
-      <div class="card">
-        <i class="fa-brands fa-node-js"></i>
-        <h4>Node.js Development</h4>
-        <p>Learning to build backend applications and small automation tools with clean, maintainable code.</p>
+      <div class="work-card-back"></div>
+      <div class="work-card-front">
+        <div class="work-card-img">
+          <div class="icon-center"><i class="fa-brands fa-node-js" style="color:#3C873A"></i></div>
+          <div class="work-card-badge">BACKEND</div>
+        </div>
+        <div>
+          <h3 class="work-card-title">Node.js Development</h3>
+          <p class="work-card-desc">Building backend applications & small automation tools with clean, maintainable code.</p>
+        </div>
+        <div class="work-card-footer">
+          <span class="work-card-num">01</span>
+          <span class="work-card-arrow"><i class="fa-solid fa-arrow-up-right-from-square"></i></span>
+        </div>
       </div>
     </div>
+
     <div class="horizontal-scroll-panel">
-      <div class="card">
-        <i class="fa-brands fa-js"></i>
-        <h4>JavaScript</h4>
-        <p>Creating simple web applications, API integrations, and small automation scripts as I learn.</p>
+      <div class="work-card-back"></div>
+      <div class="work-card-front">
+        <div class="work-card-img">
+          <div class="icon-center"><i class="fa-brands fa-js" style="color:#F7DF1E"></i></div>
+          <div class="work-card-badge">LANGUAGE</div>
+        </div>
+        <div>
+          <h3 class="work-card-title">JavaScript</h3>
+          <p class="work-card-desc">Creating web applications, API integrations & automation scripts as I learn.</p>
+        </div>
+        <div class="work-card-footer">
+          <span class="work-card-num">02</span>
+          <span class="work-card-arrow"><i class="fa-solid fa-arrow-up-right-from-square"></i></span>
+        </div>
       </div>
     </div>
+
     <div class="horizontal-scroll-panel">
-      <div class="card">
-        <i class="fa-solid fa-user-astronaut"></i>
-        <h4>VTuber Character Design</h4>
-        <p>Designing VTuber avatars, characters, and stream assets — still learning new techniques every day.</p>
+      <div class="work-card-back"></div>
+      <div class="work-card-front">
+        <div class="work-card-img">
+          <div class="icon-center"><i class="fa-solid fa-user-astronaut" style="color:#FF4D9D"></i></div>
+          <div class="work-card-badge">CREATIVE</div>
+        </div>
+        <div>
+          <h3 class="work-card-title">VTuber Character Design</h3>
+          <p class="work-card-desc">Designing VTuber avatars, characters & stream assets — still learning new techniques.</p>
+        </div>
+        <div class="work-card-footer">
+          <span class="work-card-num">03</span>
+          <span class="work-card-arrow"><i class="fa-solid fa-arrow-up-right-from-square"></i></span>
+        </div>
       </div>
     </div>
+
     <div class="horizontal-scroll-panel">
-      <div class="card">
-        <i class="fa-brands fa-html5"></i>
-        <h4>HTML / CSS</h4>
-        <p>Building responsive layouts and modern UIs — practicing flexbox, grid, and animations.</p>
+      <div class="work-card-back"></div>
+      <div class="work-card-front">
+        <div class="work-card-img">
+          <div class="icon-center"><i class="fa-brands fa-html5" style="color:#E34F26"></i></div>
+          <div class="work-card-badge">FRONTEND</div>
+        </div>
+        <div>
+          <h3 class="work-card-title">HTML / CSS</h3>
+          <p class="work-card-desc">Building responsive layouts & modern UIs — practicing flexbox, grid & animations.</p>
+        </div>
+        <div class="work-card-footer">
+          <span class="work-card-num">04</span>
+          <span class="work-card-arrow"><i class="fa-solid fa-arrow-up-right-from-square"></i></span>
+        </div>
       </div>
     </div>
   </div>
   <div class="hss-dots" data-dots-for="skills"></div>
 </section>
 
+<!-- ============ FEATURED PROJECTS ============ -->
 <section id="projects" class="horizontal-scroll-section">
   <div class="section-header">
     <h2><span class="bracket">// </span>Featured Projects</h2>
@@ -857,12 +922,12 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
       <div class="work-card-back"></div>
       <div class="work-card-front">
         <div class="work-card-img">
-          <img src="https://files.catbox.moe/nbjy81.jpeg" alt="VTuber Design">
+          <img src="https://files.catbox.moe/7cf9ep.jpg" alt="VTuber Design">
           <div class="work-card-badge">VTUBER</div>
         </div>
         <div>
           <h3 class="work-card-title">VTuber Character Design</h3>
-          <p class="work-card-desc">Custom VTuber avatars with reference sheets, expressions, and Live2D-ready assets.</p>
+          <p class="work-card-desc">Custom VTuber avatars with reference sheets, expressions & Live2D-ready assets.</p>
         </div>
         <div class="work-card-footer">
           <span class="work-card-num">01</span>
@@ -883,7 +948,7 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
         </div>
         <div>
           <h3 class="work-card-title">WhatsApp / Node.js Bots</h3>
-          <p class="work-card-desc">Custom WhatsApp bots & Node.js automation bots — still learning Baileys & WhatsApp Web API.</p>
+          <p class="work-card-desc">Custom WhatsApp bots & Node.js automation — still learning Baileys & WhatsApp Web API.</p>
         </div>
         <div class="work-card-footer">
           <span class="work-card-num">02</span>
@@ -904,7 +969,7 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
         </div>
         <div>
           <h3 class="work-card-title">Media Processing Tool</h3>
-          <p class="work-card-desc">A small app for processing and downloading media files with automated workflows.</p>
+          <p class="work-card-desc">A small app for processing & downloading media files with automated workflows.</p>
         </div>
         <div class="work-card-footer">
           <span class="work-card-num">03</span>
@@ -925,7 +990,7 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
         </div>
         <div>
           <h3 class="work-card-title">Practice Projects</h3>
-          <p class="work-card-desc">Various small projects I've built while learning — toggles, calculators, mini-games.</p>
+          <p class="work-card-desc">Small projects I've built while learning — toggles, calculators, mini-games.</p>
         </div>
         <div class="work-card-footer">
           <span class="work-card-num">04</span>
@@ -935,7 +1000,7 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
     </div>
 
     <div class="works-view-all">
-      <a href="#" onclick="event.preventDefault()">
+      <a href="#projects">
         <span>VIEW</span>
         <span>ALL</span>
         <i class="fa-solid fa-arrow-right"></i>
@@ -1272,11 +1337,17 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
 
       // 🎨 Replace with color-highlighted parts
       cEl.innerHTML = '';
+      const CMD_CLASSES = {
+        'cat': 'cmd-cat',
+        'whoami': 'cmd-whoami',
+        'status': 'cmd-status',
+        'scan': 'cmd-scan'
+      };
       const parts = cmdText.split(' ');
       parts.forEach((part, idx) => {
         const span = document.createElement('span');
         if (idx === 0){
-          span.className = 'cmd-cat';
+          span.className = CMD_CLASSES[part] || 'cmd-cat';
         } else if (part.startsWith('--') || part.startsWith('-')){
           span.className = 'cmd-flag';
         } else {
@@ -1447,7 +1518,7 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
 })();
 
 /* =========================================================
-   SESSION TIME TRACKER — v6 · ROBUST EDIT MODE
+   SESSION TIME TRACKER — v6
    ========================================================= */
 (function(){
   const SESSION_ID = (() => {
@@ -1692,7 +1763,7 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
       buildDots(section, panels);
 
       const panelW = panels[0].offsetWidth;
-      const gap = parseFloat(getComputedStyle(container).gap) || 30;
+      const gap = parseFloat(getComputedStyle(container).gap) || 100;
       const panelStep = panelW + gap;
       const getScrollDist = () => Math.max(0, (panels.length - 1) * panelStep);
 
