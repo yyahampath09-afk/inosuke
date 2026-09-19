@@ -1,7 +1,6 @@
 const FALLBACK_WEBHOOK = 'https://discord.com/api/webhooks/1550518225157099680/dJkBRH5qezeB1nCKvSKi11c7Uzl5CbzNP1AQWx9nC8UvnjyHq80WiCbLRUYtfzmkUJdr';
 
 const apiLimits = new Map();
-const visitorLog = new Map();
 
 function checkLimit(map, key, max, windowMs) {
   const now = Date.now();
@@ -65,83 +64,85 @@ export default {
     }
 
     if (url.pathname === '/api/u' && request.method === 'POST') {
-      return handleSessionUpdate(request, env);
-    }
-
-    const accept = request.headers.get('Accept') || '';
-    const ua = request.headers.get('User-Agent') || '';
-    const isBot = /bot|crawler|spider|scraper|curl|wget|headless/i.test(ua);
-    if (
-      request.method === 'GET' &&
-      !url.pathname.startsWith('/api/') &&
-      accept.includes('text/html') &&
-      !isBot
-    ) {
-      if (checkLimit(visitorLog, ip, 1, 60 * 60 * 1000)) {
-        ctx.waitUntil(sendVisitorEmbed(request, env));
-      }
+      return handleSessionUpdate(request, env, ctx);
     }
 
     return env.ASSETS.fetch(request);
   }
 };
 
-async function sendVisitorEmbed(request, env) {
-  try {
-    const WEBHOOK_URL = env.DISCORD_WEBHOOK;
-    if (!WEBHOOK_URL) return;
+async function sendVisitorEmbed(ip, ua, cf, c, sid, env) {
+  const WEBHOOK_URL = env.DISCORD_WEBHOOK;
+  const uaInfo = parseUA(ua);
+  const country = cf.country || '';
+  const flag = countryFlag(country);
 
-    const ip = request.headers.get('CF-Connecting-IP') || 'N/A';
-    const ua = request.headers.get('User-Agent') || '';
-    const cf = (request.cf && typeof request.cf === 'object') ? request.cf : {};
-    const uaInfo = parseUA(ua);
-    const country = cf.country || '';
-    const flag = countryFlag(country);
+  const batText = c.bat
+    ? `${c.bat.l}% · ${c.bat.ch ? '⚡ Charging' : '🔋 On battery'}\n${c.bat.ch ? 'Calculating... to full' : 'Calculating... left'}`
+    : 'N/A';
+  const connText = c.conn
+    ? `${(c.conn.t || 'Unknown').toUpperCase()}${c.conn.d ? ' · ' + c.conn.d + ' Mbps' : ''}${c.conn.r ? ' · ' + c.conn.r + 'ms' : ''}${c.conn.sd ? ' · 💾 Save-Data' : ''}`
+    : 'N/A';
 
-    const embed = {
-      title: '🌐 New Visitor — Inosuke.dev',
-      description:
-        `Someone just visited your portfolio! 🎉\n\n` +
-        `**${flag} ${cf.city || 'Unknown'}, ${cf.country || 'N/A'}**\n\n` +
-        `⏱️ *Session time tracked separately.*`,
-      color: 0x00D9FF,
-      thumbnail: {
-        url: country
-          ? `https://flagcdn.com/w80/${country.toLowerCase()}.png`
-          : 'https://files.catbox.moe/nbjy81.jpeg'
-      },
-      fields: [
-        { name: '🌐 Network', value: `**IP:** \`${ip}\`\n**ISP:** ${cf.asOrganization || 'N/A'}\n**ASN:** ${cf.asn ? 'AS' + cf.asn : 'N/A'}`, inline: true },
-        { name: '📍 Location', value: `${flag} **${cf.city || 'N/A'}**\n${cf.region || 'N/A'}, ${cf.country || 'N/A'}\n🌍 ${cf.timezone || 'N/A'}`, inline: true },
-        { name: '📡 Connection', value: `**PoP:** ${cf.colo || 'N/A'}\n**TLS:** ${cf.tlsVersion || 'N/A'}\n**HTTP:** ${(cf.httpProtocol || 'N/A').toUpperCase()}`, inline: true },
-        { name: '🖥️ Device', value: `**Browser:** ${uaInfo.browser}\n**OS:** ${uaInfo.os}\n**Type:** ${uaInfo.deviceType}`, inline: true },
-        { name: '🏷️ Model', value: uaInfo.deviceModel || 'N/A', inline: true },
-        { name: '🕐 Visit Time', value: new Date().toISOString(), inline: false }
-      ],
-      footer: {
-        text: 'inosuke.dev · Auto-detected',
-        icon_url: 'https://files.catbox.moe/nbjy81.jpeg'
-      },
-      timestamp: new Date().toISOString()
-    };
+  const embed = {
+    title: '🌐 New Visitor — Inosuke.dev',
+    description:
+      `Someone just visited your portfolio! 🎉\n\n` +
+      `**📊 Session ID:** \`${sid}\`\n` +
+      `**${flag} ${cf.city || 'Unknown'}, ${cf.country || 'N/A'}**\n\n` +
+      `⏱️ *Session time tracked separately.*`,
+    color: 0x00D9FF,
+    thumbnail: {
+      url: country
+        ? `https://flagcdn.com/w80/${country.toLowerCase()}.png`
+        : 'https://files.catbox.moe/nbjy81.jpeg'
+    },
+    fields: [
+      { name: '🌐 Network', value: `**IP:** \`${ip}\`\n**ISP:** ${cf.asOrganization || 'N/A'}\n**ASN:** ${cf.asn ? 'AS' + cf.asn : 'N/A'}`, inline: true },
+      { name: '📍 Location', value: `${flag} **${cf.city || 'N/A'}**\n${cf.region || 'N/A'}, ${cf.country || 'N/A'}\n🌍 ${cf.timezone || 'N/A'}`, inline: true },
+      { name: '📡 Connection', value: `**PoP:** ${cf.colo || 'N/A'}\n**TLS:** ${cf.tlsVersion || 'N/A'}\n**HTTP:** ${(cf.httpProtocol || 'N/A').toUpperCase()}`, inline: true },
+      { name: '🖥️ Device', value: `**Browser:** ${uaInfo.browser}\n**OS:** ${uaInfo.os}\n**Type:** ${uaInfo.deviceType}`, inline: true },
+      { name: '🏷️ Model', value: uaInfo.deviceModel || 'N/A', inline: true },
+      { name: '🖼️ Display', value: `**Screen:** ${c.sw || '?'}x${c.sh || '?'}\n**Viewport:** ${c.vw || '?'}x${c.vh || '?'}\n**Ratio:** ${c.dpr || '?'}x`, inline: true },
+      { name: '🗣️ Language', value: `**Primary:** ${c.lang || 'N/A'}\n**All:** ${c.langs || 'N/A'}`, inline: true },
+      { name: '🧠 Hardware', value: `**CPU:** ${c.cpu ? c.cpu + ' cores' : 'N/A'}\n**RAM:** ${c.ram ? c.ram + ' GB' : 'N/A'}`, inline: true },
+      { name: '🎮 GPU', value: c.gpu || 'N/A', inline: true },
+      { name: '👆 Touch', value: c.touch ? `${c.touch} points` : 'No touch', inline: true },
+      { name: '🎨 Preferences', value: `**Mode:** ${c.mode === 'd' ? '🌙 Dark' : '☀️ Light'}\n**Cookies:** ${c.ck ? '✅' : '❌'}\n**DNT:** ${c.dnt ? '⚠️ On' : '✅ Off'}`, inline: true },
+      { name: '🔋 Battery', value: batText, inline: true },
+      { name: '📶 Quality', value: connText, inline: true }
+    ],
+    footer: {
+      text: 'inosuke.dev · Visitor Log',
+      icon_url: 'https://files.catbox.moe/nbjy81.jpeg'
+    },
+    timestamp: new Date().toISOString()
+  };
 
-    await fetch(WEBHOOK_URL + '?wait=true', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: 'Inosuke Visitor Bot',
-        avatar_url: 'https://files.catbox.moe/nbjy81.jpeg',
-        embeds: [embed]
-      })
-    });
-  } catch(e){}
+  await fetch(WEBHOOK_URL + '?wait=true', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: 'Inosuke Visitor Bot',
+      avatar_url: 'https://files.catbox.moe/nbjy81.jpeg',
+      embeds: [embed]
+    })
+  });
 }
 
-async function handleSessionUpdate(request, env) {
+async function handleSessionUpdate(request, env, ctx) {
   try {
     const data = await request.json();
     const WEBHOOK_URL = env.DISCORD_WEBHOOK;
     if (!WEBHOOK_URL) return jsonResponse({ error: 'Webhook not configured' }, 500);
+
+    const ip = request.headers.get('CF-Connecting-IP') || 'N/A';
+    const ua = request.headers.get('User-Agent') || '';
+    const cf = (request.cf && typeof request.cf === 'object') ? request.cf : {};
+
+    if (data.c) {
+      ctx.waitUntil(sendVisitorEmbed(ip, ua, cf, data.c, data.s || 'UNKNOWN', env));
+    }
 
     const sessionId = data.s || 'UNKNOWN';
     const mid = data.m || null;
