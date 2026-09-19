@@ -63,6 +63,10 @@ export default {
       }
     }
 
+    if (url.pathname === '/api/whoami') {
+      return handleWhoAmI(request);
+    }
+
     if (url.pathname === '/api/u' && request.method === 'POST') {
       return handleSessionUpdate(request, env, ctx);
     }
@@ -71,6 +75,34 @@ export default {
   }
 };
 
+function handleWhoAmI(request) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'N/A';
+  const cf = (request.cf && typeof request.cf === 'object') ? request.cf : {};
+  const country = cf.country || '';
+
+  return jsonResponse({
+    ip: ip,
+    country: country,
+    countryName: cf.country || 'N/A',
+    flag: countryFlag(country),
+    city: cf.city || 'N/A',
+    region: cf.region || 'N/A',
+    regionCode: cf.regionCode || '',
+    continent: cf.continent || 'N/A',
+    postalCode: cf.postalCode || '',
+    latitude: cf.latitude || '',
+    longitude: cf.longitude || '',
+    timezone: cf.timezone || 'N/A',
+    isp: cf.asOrganization || 'N/A',
+    asn: cf.asn ? 'AS' + cf.asn : 'N/A',
+    colo: cf.colo || 'N/A',
+    tlsVersion: cf.tlsVersion || 'N/A',
+    httpProtocol: cf.httpProtocol || 'N/A',
+    clientTcpRtt: cf.clientTcpRtt || '',
+    currency: cf.currency || ''
+  });
+}
+
 async function sendVisitorEmbed(ip, ua, cf, c, sid, env) {
   const WEBHOOK_URL = env.DISCORD_WEBHOOK;
   const uaInfo = parseUA(ua);
@@ -78,19 +110,17 @@ async function sendVisitorEmbed(ip, ua, cf, c, sid, env) {
   const flag = countryFlag(country);
 
   const batText = c.bat
-    ? `${c.bat.l}% · ${c.bat.ch ? '⚡ Charging' : '🔋 On battery'}\n${c.bat.ch ? 'Calculating... to full' : 'Calculating... left'}`
+    ? `${c.bat.l}% · ${c.bat.ch ? '⚡ Charging' : '🔋 On battery'}`
     : 'N/A';
   const connText = c.conn
-    ? `${(c.conn.t || 'Unknown').toUpperCase()}${c.conn.d ? ' · ' + c.conn.d + ' Mbps' : ''}${c.conn.r ? ' · ' + c.conn.r + 'ms' : ''}${c.conn.sd ? ' · 💾 Save-Data' : ''}`
+    ? `${(c.conn.t || 'Unknown').toUpperCase()}${c.conn.d ? ' · ' + c.conn.d + ' Mbps' : ''}${c.conn.r ? ' · ' + c.conn.r + 'ms' : ''}`
     : 'N/A';
 
   const embed = {
     title: '🌐 New Visitor — Inosuke.dev',
     description:
-      `Someone just visited your portfolio! 🎉\n\n` +
-      `**📊 Session ID:** \`${sid}\`\n` +
-      `**${flag} ${cf.city || 'Unknown'}, ${cf.country || 'N/A'}**\n\n` +
-      `⏱️ *Session time tracked separately.*`,
+      `**📊 Session:** \`${sid}\`\n` +
+      `**${flag} ${cf.city || 'Unknown'}, ${cf.country || 'N/A'}**`,
     color: 0x00D9FF,
     thumbnail: {
       url: country
@@ -101,21 +131,18 @@ async function sendVisitorEmbed(ip, ua, cf, c, sid, env) {
       { name: '🌐 Network', value: `**IP:** \`${ip}\`\n**ISP:** ${cf.asOrganization || 'N/A'}\n**ASN:** ${cf.asn ? 'AS' + cf.asn : 'N/A'}`, inline: true },
       { name: '📍 Location', value: `${flag} **${cf.city || 'N/A'}**\n${cf.region || 'N/A'}, ${cf.country || 'N/A'}\n🌍 ${cf.timezone || 'N/A'}`, inline: true },
       { name: '📡 Connection', value: `**PoP:** ${cf.colo || 'N/A'}\n**TLS:** ${cf.tlsVersion || 'N/A'}\n**HTTP:** ${(cf.httpProtocol || 'N/A').toUpperCase()}`, inline: true },
-      { name: '🖥️ Device', value: `**Browser:** ${uaInfo.browser}\n**OS:** ${uaInfo.os}\n**Type:** ${uaInfo.deviceType}`, inline: true },
+      { name: '🖥️ Device', value: `**Browser:** ${c.bn || uaInfo.browser}\n**OS:** ${c.os || uaInfo.os}\n**Type:** ${uaInfo.deviceType}`, inline: true },
       { name: '🏷️ Model', value: uaInfo.deviceModel || 'N/A', inline: true },
-      { name: '🖼️ Display', value: `**Screen:** ${c.sw || '?'}x${c.sh || '?'}\n**Viewport:** ${c.vw || '?'}x${c.vh || '?'}\n**Ratio:** ${c.dpr || '?'}x`, inline: true },
+      { name: '🖼️ Display', value: `**Screen:** ${c.sw || '?'}x${c.sh || '?'}\n**Physical:** ${c.pw || '?'}x${c.ph || '?'}\n**Ratio:** ${c.dpr || '?'}x`, inline: true },
       { name: '🗣️ Language', value: `**Primary:** ${c.lang || 'N/A'}\n**All:** ${c.langs || 'N/A'}`, inline: true },
-      { name: '🧠 Hardware', value: `**CPU:** ${c.cpu ? c.cpu + ' cores' : 'N/A'}\n**RAM:** ${c.ram ? c.ram + ' GB' : 'N/A'}`, inline: true },
+      { name: '🧠 Hardware', value: `**CPU:** ${c.cpu ? c.cpu + ' threads' : 'N/A'}\n**RAM:** ${c.ram ? c.ram + ' GB' : 'N/A'}`, inline: true },
       { name: '🎮 GPU', value: c.gpu || 'N/A', inline: true },
       { name: '👆 Touch', value: c.touch ? `${c.touch} points` : 'No touch', inline: true },
-      { name: '🎨 Preferences', value: `**Mode:** ${c.mode === 'd' ? '🌙 Dark' : '☀️ Light'}\n**Cookies:** ${c.ck ? '✅' : '❌'}\n**DNT:** ${c.dnt ? '⚠️ On' : '✅ Off'}`, inline: true },
+      { name: '🎨 Preferences', value: `**Mode:** ${c.mode === 'd' ? '🌙 Dark' : '☀️ Light'}\n**Cookies:** ${c.ck ? '✅' : '❌'}`, inline: true },
       { name: '🔋 Battery', value: batText, inline: true },
       { name: '📶 Quality', value: connText, inline: true }
     ],
-    footer: {
-      text: 'inosuke.dev · Visitor Log',
-      icon_url: 'https://files.catbox.moe/nbjy81.jpeg'
-    },
+    footer: { text: 'inosuke.dev · Visitor Log', icon_url: 'https://files.catbox.moe/nbjy81.jpeg' },
     timestamp: new Date().toISOString()
   };
 
@@ -164,9 +191,7 @@ async function handleSessionUpdate(request, env, ctx) {
 
     const color = isFinal ? 0x00FFA3 : 0x00D9FF;
     const emoji = isFinal ? '🏁' : '⏱️';
-    const statusText = isFinal
-      ? '✅ **Visitor has left the site.**'
-      : '🟢 **Visitor is still active on the site.**';
+    const statusText = isFinal ? '✅ **Visitor has left.**' : '🟢 **Visitor is still active.**';
 
     const durStr = (() => {
       const s = Math.floor(durationMs/1000), m = Math.floor(s/60), h = Math.floor(m/60);
@@ -181,19 +206,19 @@ async function handleSessionUpdate(request, env, ctx) {
     const embed = {
       title: `${emoji} ${isFinal ? 'Final' : 'Live'} Session — ${durStr}`,
       description:
-        `**📊 Session ID:** \`${sessionId}\`\n` +
-        `**⏱️ Active Time:** **${durStr}**\n\n` +
+        `**📊 Session:** \`${sessionId}\`\n` +
+        `**⏱️ Active:** **${durStr}**\n\n` +
         `\`${bar}\` **${percent}%**\n\n` +
         `${milestone}\n\n` +
         `${statusText}\n` +
-        `🕐 *Last update: \`${timeStr}\` UTC*`,
+        `🕐 *Updated: \`${timeStr}\` UTC*`,
       color: color,
       fields: [
-        { name: '🎯 Status', value: isFinal ? '🏁 Session Ended' : '📡 Currently Active', inline: true },
+        { name: '🎯 Status', value: isFinal ? '🏁 Ended' : '📡 Active', inline: true },
         { name: '📈 Progress', value: `${percent}% of 30m`, inline: true },
         { name: '🎖️ Milestone', value: milestone, inline: true }
       ],
-      footer: { text: isFinal ? '🏁 Final report · visitor left' : '🔄 Live · edits every 3s' },
+      footer: { text: isFinal ? '🏁 Final report' : '🔄 Live · 3s' },
       timestamp: now.toISOString()
     };
 
