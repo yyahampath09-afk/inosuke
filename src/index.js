@@ -10,32 +10,27 @@ export default {
 
     const url = new URL(request.url);
 
-    // API: Log Visitor
     if (url.pathname === '/api/log-visitor' && request.method === 'POST') {
       return handleLogVisitor(request, env);
     }
 
-    // API: Session Update
     if (url.pathname === '/api/session-update' && request.method === 'POST') {
       return handleSessionUpdate(request, env);
     }
 
-    // Static Assets
     return env.ASSETS.fetch(request);
   }
 };
 
 // ============================================
-// Visitor Logger
+// Visitor Logger (sends ONE initial message)
 // ============================================
 async function handleLogVisitor(request, env) {
   try {
     const data = await request.json();
     const WEBHOOK_URL = env.DISCORD_WEBHOOK;
 
-    if (!WEBHOOK_URL) {
-      return jsonResponse({ error: 'Webhook not configured' }, 500);
-    }
+    if (!WEBHOOK_URL) return jsonResponse({ error: 'Webhook not configured' }, 500);
 
     const sessionId = data.sessionId || 'UNKNOWN';
 
@@ -76,7 +71,7 @@ async function handleLogVisitor(request, env) {
         { name: '🌐 Online', value: data.online || 'N/A', inline: false }
       ],
       footer: {
-        text: 'inosuke.dev · Visitor Tracker v2',
+        text: 'inosuke.dev · Visitor Tracker v3',
         icon_url: 'https://files.catbox.moe/nbjy81.jpeg'
       },
       timestamp: new Date().toISOString()
@@ -92,30 +87,24 @@ async function handleLogVisitor(request, env) {
       })
     });
 
-    if (!discordRes.ok) {
-      throw new Error(`Discord responded with ${discordRes.status}`);
-    }
+    if (!discordRes.ok) throw new Error(`Discord responded with ${discordRes.status}`);
 
     const discordData = await discordRes.json();
-    const messageId = discordData.id;
-
-    return jsonResponse({ ok: true, messageId: messageId });
+    return jsonResponse({ ok: true, messageId: discordData.id });
   } catch (err) {
     return jsonResponse({ error: err.message }, 500);
   }
 }
 
 // ============================================
-// Session Duration Update (with progress bar)
+// Session Duration Update — EDITS the same message
 // ============================================
 async function handleSessionUpdate(request, env) {
   try {
     const data = await request.json();
     const WEBHOOK_URL = env.DISCORD_WEBHOOK;
 
-    if (!WEBHOOK_URL) {
-      return jsonResponse({ error: 'Webhook not configured' }, 500);
-    }
+    if (!WEBHOOK_URL) return jsonResponse({ error: 'Webhook not configured' }, 500);
 
     const sessionId = data.sessionId || 'UNKNOWN';
     const parentMessageId = data.messageId || null;
@@ -130,7 +119,7 @@ async function handleSessionUpdate(request, env) {
     const bar = '█'.repeat(filled) + '░'.repeat(barLength - filled);
     const percent = Math.round(ratio * 100);
 
-    // ---- Milestone emoji based on duration ----
+    // ---- Milestone emoji ----
     let milestone = '🌱 Just started';
     if (durationMs >= 30 * 60 * 1000) milestone = '🏆 30+ minutes!';
     else if (durationMs >= 10 * 60 * 1000) milestone = '🔥 10+ minutes!';
@@ -151,54 +140,66 @@ async function handleSessionUpdate(request, env) {
       `${milestone}\n\n` +
       statusText;
 
+    const embed = {
+      title: `${emoji} ${isFinal ? 'Final' : 'Live'} Session — ${data.duration || '0s'}`,
+      description: embedDescription,
+      color: color,
+      fields: [
+        {
+          name: '🎯 Status',
+          value: isFinal ? '🏁 Session Ended' : '📡 Currently Active',
+          inline: true
+        },
+        {
+          name: '📈 Progress',
+          value: `${percent}% of 30m`,
+          inline: true
+        },
+        {
+          name: '🎖️ Milestone',
+          value: milestone,
+          inline: true
+        }
+      ],
+      footer: {
+        text: isFinal
+          ? '🏁 Final report · visitor left'
+          : '🔄 Live update · refreshes every 5s'
+      },
+      timestamp: new Date().toISOString()
+    };
+
     const body = {
       username: 'Inosuke Visitor Bot',
       avatar_url: 'https://files.catbox.moe/nbjy81.jpeg',
-      embeds: [{
-        title: `${emoji} ${isFinal ? 'Final' : 'Live'} Session — ${data.duration || '0s'}`,
-        description: embedDescription,
-        color: color,
-        fields: [
-          {
-            name: '🎯 Status',
-            value: isFinal ? '🏁 Session Ended' : '📡 Currently Active',
-            inline: true
-          },
-          {
-            name: '📈 Progress',
-            value: `${percent}% of 30m`,
-            inline: true
-          },
-          {
-            name: '🎖️ Milestone',
-            value: milestone,
-            inline: true
-          }
-        ],
-        footer: {
-          text: isFinal
-            ? '🏁 Final report · visitor left'
-            : '🔄 Live update · refreshes every 30s'
-        },
-        timestamp: new Date().toISOString()
-      }]
+      embeds: [embed]
     };
 
-    // Reply to the original visitor message (only for live updates)
-    if (parentMessageId && !isFinal) {
-      body.message_reference = {
-        message_id: parentMessageId,
-        fail_if_not_exists: false
-      };
+    // 🎯 If we have a message ID → EDIT it (PATCH), don't send new
+    if (parentMessageId) {
+      const editUrl = `${WEBHOOK_URL}/messages/${parentMessageId}`;
+      const editRes = await fetch(editUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (editRes.ok) {
+        return jsonResponse({ ok: true, edited: true, messageId: parentMessageId });
+      }
+
+      // If edit fails (message deleted?), fallback below
     }
 
-    await fetch(WEBHOOK_URL + '?wait=true', {
+    // Fallback: send new message if we have no messageId or edit failed
+    const newRes = await fetch(WEBHOOK_URL + '?wait=true', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
 
-    return jsonResponse({ ok: true });
+    const newData = newRes.ok ? await newRes.json() : {};
+    return jsonResponse({ ok: true, edited: false, messageId: newData.id });
   } catch (err) {
     return jsonResponse({ error: err.message }, 500);
   }
