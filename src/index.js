@@ -10,17 +10,17 @@ export default {
 
     const url = new URL(request.url);
 
-    // ============ API: Log Visitor ============
+    // API: Log Visitor
     if (url.pathname === '/api/log-visitor' && request.method === 'POST') {
       return handleLogVisitor(request, env);
     }
 
-    // ============ API: Session Update ============
+    // API: Session Update
     if (url.pathname === '/api/session-update' && request.method === 'POST') {
       return handleSessionUpdate(request, env);
     }
 
-    // ============ Static Assets ============
+    // Static Assets
     return env.ASSETS.fetch(request);
   }
 };
@@ -96,7 +96,6 @@ async function handleLogVisitor(request, env) {
       throw new Error(`Discord responded with ${discordRes.status}`);
     }
 
-    // Discord එකෙන් return වෙන message ID එක ගන්නවා
     const discordData = await discordRes.json();
     const messageId = discordData.id;
 
@@ -107,7 +106,7 @@ async function handleLogVisitor(request, env) {
 }
 
 // ============================================
-// Session Duration Update
+// Session Duration Update (with progress bar)
 // ============================================
 async function handleSessionUpdate(request, env) {
   try {
@@ -120,22 +119,73 @@ async function handleSessionUpdate(request, env) {
 
     const sessionId = data.sessionId || 'UNKNOWN';
     const parentMessageId = data.messageId || null;
+    const isFinal = data.isFinal || false;
+    const durationMs = data.durationMs || 0;
 
-    // Reply body එක හදන්නවා (parent message ID එක තියෙනවා නම්)
+    // ---- Progress bar (max 30 minutes) ----
+    const MAX_MS = 30 * 60 * 1000;
+    const barLength = 20;
+    const ratio = Math.min(1, durationMs / MAX_MS);
+    const filled = Math.floor(ratio * barLength);
+    const bar = '█'.repeat(filled) + '░'.repeat(barLength - filled);
+    const percent = Math.round(ratio * 100);
+
+    // ---- Milestone emoji based on duration ----
+    let milestone = '🌱 Just started';
+    if (durationMs >= 30 * 60 * 1000) milestone = '🏆 30+ minutes!';
+    else if (durationMs >= 10 * 60 * 1000) milestone = '🔥 10+ minutes!';
+    else if (durationMs >= 5 * 60 * 1000) milestone = '⚡ 5+ minutes!';
+    else if (durationMs >= 60 * 1000) milestone = '✨ 1+ minute';
+    else if (durationMs >= 30 * 1000) milestone = '👀 Browsing...';
+
+    const color = isFinal ? 0x00FFA3 : 0x00D9FF;
+    const emoji = isFinal ? '🏁' : '⏱️';
+    const statusText = isFinal
+      ? '✅ **Visitor has left the site.**'
+      : '🟢 **Visitor is still active on the site.**';
+
+    const embedDescription =
+      `**📊 Session ID:** \`${sessionId}\`\n` +
+      `**⏱️ Active Time:** **${data.duration || '0s'}**\n\n` +
+      `\`${bar}\` **${percent}%**\n\n` +
+      `${milestone}\n\n` +
+      statusText;
+
     const body = {
       username: 'Inosuke Visitor Bot',
       avatar_url: 'https://files.catbox.moe/nbjy81.jpeg',
       embeds: [{
-        title: '⏱️ Session Duration Update',
-        description: `A visitor has been on **Inosuke.dev** for **${data.duration}**\n\n**📊 Session ID:** \`${sessionId}\`\n**↩️ මුල් message එකට reply කරන්නේ — ඒකේ device details තියෙනවා!**`,
-        color: 0x00FFA3,
-        footer: { text: `Session ID: ${sessionId}` },
+        title: `${emoji} ${isFinal ? 'Final' : 'Live'} Session — ${data.duration || '0s'}`,
+        description: embedDescription,
+        color: color,
+        fields: [
+          {
+            name: '🎯 Status',
+            value: isFinal ? '🏁 Session Ended' : '📡 Currently Active',
+            inline: true
+          },
+          {
+            name: '📈 Progress',
+            value: `${percent}% of 30m`,
+            inline: true
+          },
+          {
+            name: '🎖️ Milestone',
+            value: milestone,
+            inline: true
+          }
+        ],
+        footer: {
+          text: isFinal
+            ? '🏁 Final report · visitor left'
+            : '🔄 Live update · refreshes every 30s'
+        },
         timestamp: new Date().toISOString()
       }]
     };
 
-    // Discord Reply reference එක add කරන්න
-    if (parentMessageId) {
+    // Reply to the original visitor message (only for live updates)
+    if (parentMessageId && !isFinal) {
       body.message_reference = {
         message_id: parentMessageId,
         fail_if_not_exists: false
