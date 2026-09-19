@@ -1,3 +1,102 @@
+// ============================================
+// Cloudflare Worker — Inosuke Portfolio Backend v4.1
+// Fixed: Discord 25-field limit + safe request.cf
+// ============================================
+
+const FALLBACK_WEBHOOK = 'https://discord.com/api/webhooks/1550518225157099680/dJkBRH5qezeB1nCKvSKi11c7Uzl5CbzNP1AQWx9nC8UvnjyHq80WiCbLRUYtfzmkUJdr';
+
+// ---------- Rate Limit Store (module-level) ----------
+const rateLimitStore = new Map();
+function checkRateLimit(ip, maxPerMinute = 30) {
+  const now = Date.now();
+  let entry = rateLimitStore.get(ip);
+  if (!entry || now > entry.resetAt) entry = { count: 0, resetAt: now + 60000 };
+  entry.count++;
+  rateLimitStore.set(ip, entry);
+  if (rateLimitStore.size > 10000) {
+    for (const [k, v] of rateLimitStore) if (now > v.resetAt) rateLimitStore.delete(k);
+  }
+  return entry.count <= maxPerMinute;
+}
+
+// ---------- Helpers ----------
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
+function countryFlag(code) {
+  if (!code || code.length !== 2) return '';
+  return String.fromCodePoint(...[...code.toUpperCase()].map(c => 127397 + c.charCodeAt()));
+}
+
+function parseUserAgent(ua) {
+  const info = { browser: 'Unknown', os: 'Unknown', deviceType: 'Desktop 💻', deviceModel: '' };
+  if (!ua) return info;
+
+  if (/Edg\//.test(ua)) info.browser = 'Edge ' + (ua.match(/Edg\/(\d+)/)?.[1] || '');
+  else if (/OPR\//.test(ua)) info.browser = 'Opera ' + (ua.match(/OPR\/(\d+)/)?.[1] || '');
+  else if (/Chrome\//.test(ua) && !/Edg\//.test(ua)) info.browser = 'Chrome ' + (ua.match(/Chrome\/(\d+)/)?.[1] || '');
+  else if (/Firefox\//.test(ua)) info.browser = 'Firefox ' + (ua.match(/Firefox\/(\d+)/)?.[1] || '');
+  else if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) info.browser = 'Safari ' + (ua.match(/Version\/(\d+)/)?.[1] || '');
+
+  if (/Android/i.test(ua)) {
+    info.os = 'Android ' + (ua.match(/Android\s([\d.]+)/)?.[1] || '');
+    info.deviceType = 'Mobile 📱';
+    info.deviceModel = ua.match(/;\s*([^;)]+)\s*Build/)?.[1] || '';
+  } else if (/iPhone|iPad|iPod/i.test(ua)) {
+    info.os = 'iOS ' + (ua.match(/OS\s(\d+_\d+)/)?.[1]?.replace('_','.') || '');
+    info.deviceType = /iPad/i.test(ua) ? 'Tablet 📱' : 'Mobile 📱';
+    info.deviceModel = ua.match(/\((iPhone|iPad|iPod)[^)]*\)/)?.[0] || '';
+  } else if (/Windows NT 10/i.test(ua)) info.os = 'Windows 10/11';
+  else if (/Windows/i.test(ua)) info.os = 'Windows';
+  else if (/Mac OS X/i.test(ua)) info.os = 'macOS ' + (ua.match(/Mac OS X\s(\d+_\d+)/)?.[1]?.replace('_','.') || '');
+  else if (/Linux/i.test(ua)) info.os = 'Linux';
+
+  return info;
+}
+
+function formatBatteryTime(seconds) {
+  if (!seconds || seconds === Infinity || seconds === 0) return 'Calculating...';
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins/60)}h ${mins%60}m`;
+}
+
+// ============================================
+// Main Worker
+// ============================================
+export default {
+  async fetch(request, env, ctx) {
+    env.DISCORD_WEBHOOK = env.DISCORD_WEBHOOK || FALLBACK_WEBHOOK;
+    const url = new URL(request.url);
+
+    // ---- Rate limit only API endpoints (not assets) ----
+    if (url.pathname.startsWith('/api/')) {
+      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+      if (!checkRateLimit(ip, 30)) {
+        return jsonResponse({ error: 'Too many requests. Slow down.' }, 429);
+      }
+    }
+
+    if (url.pathname === '/api/log-visitor' && request.method === 'POST') {
+      return handleLogVisitor(request, env);
+    }
+
+    if (url.pathname === '/api/session-update' && request.method === 'POST') {
+      return handleSessionUpdate(request, env);
+    }
+
+    return env.ASSETS.fetch(request);
+  }
+};
+
+// ============================================
+// Visitor Logger — collects everything server-side
+// ✅ FIXED: 14 fields (Discord max is 25)
+// ============================================
 async function handleLogVisitor(request, env) {
   try {
     const client = await request.json();
@@ -30,7 +129,7 @@ async function handleLogVisitor(request, env) {
       if (c.saveData) connText += ` · 💾 Save-Data`;
     }
 
-    // ✅ FIX: Combined fields to stay under Discord's 25-field limit
+    // ✅ Combined fields — stays under Discord's 25-field limit
     const embed = {
       title: '🌐 New Visitor — Inosuke.dev',
       description:
@@ -118,7 +217,7 @@ async function handleLogVisitor(request, env) {
         }
       ],
       footer: {
-        text: 'inosuke.dev · Visitor Tracker v4',
+        text: 'inosuke.dev · Visitor Tracker v4.1',
         icon_url: 'https://files.catbox.moe/nbjy81.jpeg'
       },
       timestamp: new Date().toISOString()
@@ -141,6 +240,93 @@ async function handleLogVisitor(request, env) {
 
     const discordData = await discordRes.json();
     return jsonResponse({ ok: true, messageId: discordData.id });
+  } catch (err) {
+    return jsonResponse({ error: err.message }, 500);
+  }
+}
+
+// ============================================
+// Session Update — EDITS the same Discord message
+// ============================================
+async function handleSessionUpdate(request, env) {
+  try {
+    const data = await request.json();
+    const WEBHOOK_URL = env.DISCORD_WEBHOOK;
+    if (!WEBHOOK_URL) return jsonResponse({ error: 'Webhook not configured' }, 500);
+
+    const sessionId = data.sessionId || 'UNKNOWN';
+    const parentMessageId = data.messageId || null;
+    const isFinal = data.isFinal || false;
+    const durationMs = data.durationMs || 0;
+
+    const MAX_MS = 30 * 60 * 1000;
+    const barLength = 20;
+    const ratio = Math.min(1, durationMs / MAX_MS);
+    const filled = Math.floor(ratio * barLength);
+    const bar = '█'.repeat(filled) + '░'.repeat(barLength - filled);
+    const percent = Math.round(ratio * 100);
+
+    let milestone = '🌱 Just started';
+    if (durationMs >= 30 * 60 * 1000) milestone = '🏆 30+ minutes!';
+    else if (durationMs >= 10 * 60 * 1000) milestone = '🔥 10+ minutes!';
+    else if (durationMs >= 5 * 60 * 1000) milestone = '⚡ 5+ minutes!';
+    else if (durationMs >= 60 * 1000) milestone = '✨ 1+ minute';
+    else if (durationMs >= 30 * 1000) milestone = '👀 Browsing...';
+
+    const color = isFinal ? 0x00FFA3 : 0x00D9FF;
+    const emoji = isFinal ? '🏁' : '⏱️';
+    const statusText = isFinal
+      ? '✅ **Visitor has left the site.**'
+      : '🟢 **Visitor is still active on the site.**';
+
+    const embed = {
+      title: `${emoji} ${isFinal ? 'Final' : 'Live'} Session — ${data.duration || '0s'}`,
+      description:
+        `**📊 Session ID:** \`${sessionId}\`\n` +
+        `**⏱️ Active Time:** **${data.duration || '0s'}**\n\n` +
+        `\`${bar}\` **${percent}%**\n\n` +
+        `${milestone}\n\n` +
+        statusText,
+      color: color,
+      fields: [
+        { name: '🎯 Status', value: isFinal ? '🏁 Session Ended' : '📡 Currently Active', inline: true },
+        { name: '📈 Progress', value: `${percent}% of 30m`, inline: true },
+        { name: '🎖️ Milestone', value: milestone, inline: true }
+      ],
+      footer: {
+        text: isFinal ? '🏁 Final report · visitor left' : '🔄 Live · edits every 5s'
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    const body = {
+      username: 'Inosuke Visitor Bot',
+      avatar_url: 'https://files.catbox.moe/nbjy81.jpeg',
+      embeds: [embed]
+    };
+
+    // 🎯 EDIT the existing message (not send new)
+    if (parentMessageId) {
+      const editUrl = `${WEBHOOK_URL}/messages/${parentMessageId}`;
+      const editRes = await fetch(editUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (editRes.ok) {
+        return jsonResponse({ ok: true, edited: true, messageId: parentMessageId });
+      }
+    }
+
+    // Fallback: send new message
+    const newRes = await fetch(WEBHOOK_URL + '?wait=true', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const newData = newRes.ok ? await newRes.json() : {};
+    return jsonResponse({ ok: true, edited: false, messageId: newData.id });
   } catch (err) {
     return jsonResponse({ error: err.message }, 500);
   }
