@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>Inosuke Hasibira | Developer & VTuber</title>
-  <link rel="icon" type="image/jpeg" href="https://files.catbox.moe/nbjy81.jpeg">
+<link rel="icon" type="image/jpeg" href="https://files.catbox.moe/nbjy81.jpeg">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
@@ -1233,6 +1233,7 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   });
 })();
 
+/* ========== TERMINALS ========== */
 (function(){
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   function scrollBottom(el){ el.scrollTop = el.scrollHeight; }
@@ -1245,52 +1246,24 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
       scrollBottom(bodyEl);
       return d;
     };
-  }function makeTypeCmd(bodyEl){
-  return async function(promptText, cmdText){
-    const d = document.createElement('div');
-    d.className = 'terminal-line';
-    d.innerHTML = `<span class="prompt">${promptText}</span> <span class="cmd"></span><span class="cursor"></span>`;
-    bodyEl.appendChild(d);
-    scrollBottom(bodyEl);
-    const cEl = d.querySelector('.cmd');
-
-    const parts = cmdText.split(' ');
-    const firstWord = parts[0];
-
-    for (let i = 0; i < cmdText.length; i++){
-      cEl.textContent += cmdText[i];
+  }
+  function makeTypeCmd(bodyEl){
+    return async function(promptText, cmdText){
+      const d = document.createElement('div');
+      d.className = 'terminal-line';
+      d.innerHTML = `<span class="prompt">${promptText}</span> <span class="cmd"></span><span class="cursor"></span>`;
+      bodyEl.appendChild(d);
       scrollBottom(bodyEl);
-      await sleep(40);
-    }
-
-    cEl.innerHTML = '';
-    parts.forEach((part, idx) => {
-      const span = document.createElement('span');
-
-      if (idx === 0){
-        if (part === 'cat') span.className = 'cmd-cat';
-        else if (part === 'whoami') span.className = 'cmd-whoami';
-        else if (part === 'status') span.className = 'cmd-status';
-        else if (part === 'scan') span.className = 'cmd-scan';
-        else span.className = 'cmd';
-      } else if (part.startsWith('--') || part.startsWith('-')){
-        span.className = 'cmd-flag';
-      } else {
-        span.className = 'cmd-arg';
+      const cEl = d.querySelector('.cmd');
+      for (let i = 0; i < cmdText.length; i++){
+        cEl.textContent += cmdText[i];
+        scrollBottom(bodyEl);
+        await sleep(40);
       }
-
-      span.textContent = part;
-      cEl.appendChild(span);
-
-      if (idx < parts.length - 1){
-        cEl.appendChild(document.createTextNode(' '));
-      }
-    });
-
-    d.querySelector('.cursor')?.remove();
-    await sleep(180);
-  };
-}
+      d.querySelector('.cursor')?.remove();
+      await sleep(180);
+    };
+  }
   function makeTypeOut(bodyEl){
     return async function(text, cls='out'){
       const d = document.createElement('div');
@@ -1446,11 +1419,103 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   }
 })();
 
+/* =========================================================
+   SESSION TIME TRACKER — Accurate Active-Time Tracking
+   ========================================================= */
 (function(){
-  if (sessionStorage.getItem('visitor_logged') === 'true') return;
+  // ---- Session ID (persist across refresh) ----
+  const SESSION_ID = (() => {
+    let sid = sessionStorage.getItem('session_id');
+    if (!sid){
+      sid = Date.now().toString(36).toUpperCase();
+      sessionStorage.setItem('session_id', sid);
+    }
+    return sid;
+  })();
 
-  const SESSION_START = Date.now();
-  const SESSION_ID = SESSION_START.toString(36).toUpperCase();
+  // ---- Active time state ----
+  let activeMs = 0;
+  let lastVisibleAt = document.hidden ? 0 : Date.now();
+  let lastSentMs = 0;
+  let messageId = sessionStorage.getItem('visitor_message_id') || null;
+  let sessionLogged = sessionStorage.getItem('visitor_logged') === 'true';
+
+  function updateActiveTime(){
+    if (!document.hidden && lastVisibleAt === 0){
+      lastVisibleAt = Date.now();
+    } else if (document.hidden && lastVisibleAt > 0){
+      activeMs += Date.now() - lastVisibleAt;
+      lastVisibleAt = 0;
+    }
+  }
+
+  function getActiveMs(){
+    updateActiveTime();
+    if (lastVisibleAt > 0) return activeMs + (Date.now() - lastVisibleAt);
+    return activeMs;
+  }
+
+  function formatDuration(ms){
+    const secs = Math.floor(ms / 1000);
+    const mins = Math.floor(secs / 60);
+    const hours = Math.floor(mins / 60);
+    if (hours > 0) return `${hours}h ${mins % 60}m ${secs % 60}s`;
+    if (mins > 0) return `${mins}m ${secs % 60}s`;
+    return `${secs}s`;
+  }
+
+  async function sendUpdate(isFinal = false){
+    const currentMs = getActiveMs();
+    if (!isFinal && currentMs - lastSentMs < 5000) return;
+    lastSentMs = currentMs;
+    try {
+      await fetch('/api/session-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          duration: formatDuration(currentMs),
+          durationMs: currentMs,
+          sessionId: SESSION_ID,
+          messageId: messageId,
+          isFinal: isFinal
+        }),
+        keepalive: true
+      });
+    } catch(e){}
+  }
+
+  function sendFinalBeacon(){
+    const currentMs = getActiveMs();
+    if (currentMs <= lastSentMs) return;
+    const payload = JSON.stringify({
+      duration: formatDuration(currentMs),
+      durationMs: currentMs,
+      sessionId: SESSION_ID,
+      messageId: messageId,
+      isFinal: true
+    });
+    if (navigator.sendBeacon){
+      navigator.sendBeacon(
+        '/api/session-update',
+        new Blob([payload], { type: 'application/json' })
+      );
+    } else {
+      fetch('/api/session-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true
+      }).catch(() => {});
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    updateActiveTime();
+    if (document.hidden && sessionLogged) sendUpdate(false);
+  });
+
+  window.addEventListener('pagehide', sendFinalBeacon);
+  window.addEventListener('beforeunload', sendFinalBeacon);
 
   function getConnectionType(){
     const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -1481,15 +1546,6 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
     } catch(e){ return 'N/A'; }
   }
 
-  function formatDuration(ms){
-    const secs = Math.floor(ms / 1000);
-    const mins = Math.floor(secs / 60);
-    const hours = Math.floor(mins / 60);
-    if (hours > 0) return `${hours}h ${mins % 60}m ${secs % 60}s`;
-    if (mins > 0) return `${mins}m ${secs % 60}s`;
-    return `${secs}s`;
-  }
-
   async function getBatteryInfo(){
     try {
       if (navigator.getBattery){
@@ -1514,6 +1570,7 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   }
 
   async function logVisitor(){
+    if (sessionLogged) return;
     try {
       const [ipData, battery] = await Promise.all([getIPData(), getBatteryInfo()]);
       const ua = navigator.userAgent;
@@ -1590,33 +1647,26 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
       });
 
       if (res.ok){
-        
         const responseData = await res.json();
-        const messageId = responseData.messageId;
-
+        messageId = responseData.messageId;
         sessionStorage.setItem('visitor_logged', 'true');
         sessionStorage.setItem('visitor_message_id', messageId || '');
-
-        setTimeout(async () => {
-          try {
-            await fetch('/api/session-update', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                duration: formatDuration(Date.now() - SESSION_START),
-                sessionId: SESSION_ID,
-                messageId: messageId  
-              })
-            });
-          } catch(e){}
-        }, 60000);
+        sessionLogged = true;
       }
     } catch (err) {
       console.log('Visitor log failed:', err);
     }
   }
 
-  setTimeout(logVisitor, 2000);
+  setInterval(() => { if (sessionLogged) sendUpdate(false); }, 30000);
+  setTimeout(() => { if (sessionLogged) sendUpdate(false); }, 60000);
+  setTimeout(() => { if (sessionLogged) sendUpdate(false); }, 5 * 60 * 1000);
+  setTimeout(() => { if (sessionLogged) sendUpdate(false); }, 10 * 60 * 1000);
+  setTimeout(() => { if (sessionLogged) sendUpdate(false); }, 30 * 60 * 1000);
+
+  if (!sessionLogged){
+    setTimeout(logVisitor, 2000);
+  }
 })();
 
 /* =========================================================
