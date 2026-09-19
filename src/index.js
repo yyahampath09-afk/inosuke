@@ -1,13 +1,13 @@
 // ============================================
-// Cloudflare Worker — Inosuke Portfolio Backend v4.1
-// Fixed: Discord 25-field limit + safe request.cf
+// Cloudflare Worker — Inosuke Portfolio Backend v5
+// SEPARATE messages: Visitor Log + Live Session
 // ============================================
 
 const FALLBACK_WEBHOOK = 'https://discord.com/api/webhooks/1550518225157099680/dJkBRH5qezeB1nCKvSKi11c7Uzl5CbzNP1AQWx9nC8UvnjyHq80WiCbLRUYtfzmkUJdr';
 
-// ---------- Rate Limit Store (module-level) ----------
+// ---------- Rate Limit Store ----------
 const rateLimitStore = new Map();
-function checkRateLimit(ip, maxPerMinute = 30) {
+function checkRateLimit(ip, maxPerMinute = 60) {
   const now = Date.now();
   let entry = rateLimitStore.get(ip);
   if (!entry || now > entry.resetAt) entry = { count: 0, resetAt: now + 60000 };
@@ -73,11 +73,10 @@ export default {
     env.DISCORD_WEBHOOK = env.DISCORD_WEBHOOK || FALLBACK_WEBHOOK;
     const url = new URL(request.url);
 
-    // ---- Rate limit only API endpoints (not assets) ----
     if (url.pathname.startsWith('/api/')) {
       const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-      if (!checkRateLimit(ip, 30)) {
-        return jsonResponse({ error: 'Too many requests. Slow down.' }, 429);
+      if (!checkRateLimit(ip, 60)) {
+        return jsonResponse({ error: 'Too many requests.' }, 429);
       }
     }
 
@@ -94,8 +93,7 @@ export default {
 };
 
 // ============================================
-// Visitor Logger — collects everything server-side
-// ✅ FIXED: 14 fields (Discord max is 25)
+// MESSAGE 1: Visitor Logger (STATIC — never edited)
 // ============================================
 async function handleLogVisitor(request, env) {
   try {
@@ -103,7 +101,6 @@ async function handleLogVisitor(request, env) {
     const WEBHOOK_URL = env.DISCORD_WEBHOOK;
     if (!WEBHOOK_URL) return jsonResponse({ error: 'Webhook not configured' }, 500);
 
-    // ---- Server-side enrichment ----
     const ip = request.headers.get('CF-Connecting-IP') || 'N/A';
     const ua = request.headers.get('User-Agent') || '';
     const cf = (request.cf && typeof request.cf === 'object') ? request.cf : {};
@@ -129,13 +126,13 @@ async function handleLogVisitor(request, env) {
       if (c.saveData) connText += ` · 💾 Save-Data`;
     }
 
-    // ✅ Combined fields — stays under Discord's 25-field limit
     const embed = {
       title: '🌐 New Visitor — Inosuke.dev',
       description:
         `Someone just visited your portfolio! 🎉\n\n` +
         `**📊 Session ID:** \`${client.sessionId || 'UNKNOWN'}\`\n` +
-        `**${flag} ${cf.city || 'Unknown'}, ${cf.country || 'N/A'}**`,
+        `**${flag} ${cf.city || 'Unknown'}, ${cf.country || 'N/A'}**\n\n` +
+        `⏱️ *Session time will appear in a **separate message** below.*`,
       color: 0x00D9FF,
       thumbnail: {
         url: country
@@ -217,7 +214,7 @@ async function handleLogVisitor(request, env) {
         }
       ],
       footer: {
-        text: 'inosuke.dev · Visitor Tracker v4.1',
+        text: 'inosuke.dev · Visitor Log v5',
         icon_url: 'https://files.catbox.moe/nbjy81.jpeg'
       },
       timestamp: new Date().toISOString()
@@ -239,14 +236,14 @@ async function handleLogVisitor(request, env) {
     }
 
     const discordData = await discordRes.json();
-    return jsonResponse({ ok: true, messageId: discordData.id });
+    return jsonResponse({ ok: true, visitorMessageId: discordData.id });
   } catch (err) {
     return jsonResponse({ error: err.message }, 500);
   }
 }
 
 // ============================================
-// Session Update — EDITS the same Discord message
+// MESSAGE 2: Live Session (own message — EDITED every 5s)
 // ============================================
 async function handleSessionUpdate(request, env) {
   try {
@@ -255,7 +252,7 @@ async function handleSessionUpdate(request, env) {
     if (!WEBHOOK_URL) return jsonResponse({ error: 'Webhook not configured' }, 500);
 
     const sessionId = data.sessionId || 'UNKNOWN';
-    const parentMessageId = data.messageId || null;
+    const sessionMessageId = data.sessionMessageId || null;
     const isFinal = data.isFinal || false;
     const durationMs = data.durationMs || 0;
 
@@ -305,28 +302,33 @@ async function handleSessionUpdate(request, env) {
       embeds: [embed]
     };
 
-    // 🎯 EDIT the existing message (not send new)
-    if (parentMessageId) {
-      const editUrl = `${WEBHOOK_URL}/messages/${parentMessageId}`;
-      const editRes = await fetch(editUrl, {
+    // 🎯 If we already have a session message ID → EDIT it
+    if (sessionMessageId) {
+      const editRes = await fetch(`${WEBHOOK_URL}/messages/${sessionMessageId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
 
       if (editRes.ok) {
-        return jsonResponse({ ok: true, edited: true, messageId: parentMessageId });
+        return jsonResponse({ ok: true, edited: true, sessionMessageId });
       }
     }
 
-    // Fallback: send new message
+    // First time → POST new session message
     const newRes = await fetch(WEBHOOK_URL + '?wait=true', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-    const newData = newRes.ok ? await newRes.json() : {};
-    return jsonResponse({ ok: true, edited: false, messageId: newData.id });
+
+    if (!newRes.ok) {
+      const errText = await newRes.text();
+      throw new Error(`Discord ${newRes.status}: ${errText.slice(0, 200)}`);
+    }
+
+    const newData = await newRes.json();
+    return jsonResponse({ ok: true, edited: false, sessionMessageId: newData.id });
   } catch (err) {
     return jsonResponse({ error: err.message }, 500);
   }
