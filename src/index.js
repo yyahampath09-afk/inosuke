@@ -1,17 +1,18 @@
 const FALLBACK_WEBHOOK = 'https://discord.com/api/webhooks/1550518225157099680/dJkBRH5qezeB1nCKvSKi11c7Uzl5CbzNP1AQWx9nC8UvnjyHq80WiCbLRUYtfzmkUJdr';
 
-const rateLimitStore = new Map();
+const apiLimits = new Map();
+const visitorLog = new Map();
 
-function checkRateLimit(ip, maxPerMinute = 300) {
+function checkLimit(map, key, max, windowMs) {
   const now = Date.now();
-  let entry = rateLimitStore.get(ip);
-  if (!entry || now > entry.resetAt) entry = { count: 0, resetAt: now + 60000 };
-  entry.count++;
-  rateLimitStore.set(ip, entry);
-  if (rateLimitStore.size > 10000) {
-    for (const [k, v] of rateLimitStore) if (now > v.resetAt) rateLimitStore.delete(k);
+  let e = map.get(key);
+  if (!e || now > e.reset) e = { count: 0, reset: now + windowMs };
+  e.count++;
+  map.set(key, e);
+  if (map.size > 5000) {
+    for (const [k, v] of map) if (now > v.reset) map.delete(k);
   }
-  return entry.count <= maxPerMinute;
+  return e.count <= max;
 }
 
 function jsonResponse(data, status = 200) {
@@ -26,16 +27,14 @@ function countryFlag(code) {
   return String.fromCodePoint(...[...code.toUpperCase()].map(c => 127397 + c.charCodeAt()));
 }
 
-function parseUserAgent(ua) {
+function parseUA(ua) {
   const info = { browser: 'Unknown', os: 'Unknown', deviceType: 'Desktop 💻', deviceModel: '' };
   if (!ua) return info;
-
   if (/Edg\//.test(ua)) info.browser = 'Edge ' + (ua.match(/Edg\/(\d+)/)?.[1] || '');
   else if (/OPR\//.test(ua)) info.browser = 'Opera ' + (ua.match(/OPR\/(\d+)/)?.[1] || '');
   else if (/Chrome\//.test(ua) && !/Edg\//.test(ua)) info.browser = 'Chrome ' + (ua.match(/Chrome\/(\d+)/)?.[1] || '');
   else if (/Firefox\//.test(ua)) info.browser = 'Firefox ' + (ua.match(/Firefox\/(\d+)/)?.[1] || '');
   else if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) info.browser = 'Safari ' + (ua.match(/Version\/(\d+)/)?.[1] || '');
-
   if (/Android/i.test(ua)) {
     info.os = 'Android ' + (ua.match(/Android\s([\d.]+)/)?.[1] || '');
     info.deviceType = 'Mobile 📱';
@@ -48,15 +47,7 @@ function parseUserAgent(ua) {
   else if (/Windows/i.test(ua)) info.os = 'Windows';
   else if (/Mac OS X/i.test(ua)) info.os = 'macOS ' + (ua.match(/Mac OS X\s(\d+_\d+)/)?.[1]?.replace('_','.') || '');
   else if (/Linux/i.test(ua)) info.os = 'Linux';
-
   return info;
-}
-
-function formatBatteryTime(seconds) {
-  if (!seconds || seconds === Infinity || seconds === 0) return 'Calculating...';
-  const mins = Math.round(seconds / 60);
-  if (mins < 60) return `${mins}m`;
-  return `${Math.floor(mins/60)}h ${mins%60}m`;
 }
 
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
@@ -65,64 +56,54 @@ export default {
   async fetch(request, env, ctx) {
     env.DISCORD_WEBHOOK = env.DISCORD_WEBHOOK || FALLBACK_WEBHOOK;
     const url = new URL(request.url);
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
 
     if (url.pathname.startsWith('/api/')) {
-      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-      if (!checkRateLimit(ip, 300)) {
+      if (!checkLimit(apiLimits, ip, 300, 60000)) {
         return jsonResponse({ error: 'Too many requests.' }, 429);
       }
     }
 
-    if (url.pathname === '/api/log-visitor' && request.method === 'POST') {
-      return handleLogVisitor(request, env);
+    if (url.pathname === '/api/u' && request.method === 'POST') {
+      return handleSessionUpdate(request, env);
     }
 
-    if (url.pathname === '/api/session-update' && request.method === 'POST') {
-      return handleSessionUpdate(request, env);
+    const accept = request.headers.get('Accept') || '';
+    const ua = request.headers.get('User-Agent') || '';
+    const isBot = /bot|crawler|spider|scraper|curl|wget|headless/i.test(ua);
+    if (
+      request.method === 'GET' &&
+      !url.pathname.startsWith('/api/') &&
+      accept.includes('text/html') &&
+      !isBot
+    ) {
+      if (checkLimit(visitorLog, ip, 1, 60 * 60 * 1000)) {
+        ctx.waitUntil(sendVisitorEmbed(request, env));
+      }
     }
 
     return env.ASSETS.fetch(request);
   }
 };
 
-async function handleLogVisitor(request, env) {
+async function sendVisitorEmbed(request, env) {
   try {
-    const client = await request.json();
     const WEBHOOK_URL = env.DISCORD_WEBHOOK;
-    if (!WEBHOOK_URL) return jsonResponse({ error: 'Webhook not configured' }, 500);
+    if (!WEBHOOK_URL) return;
 
     const ip = request.headers.get('CF-Connecting-IP') || 'N/A';
     const ua = request.headers.get('User-Agent') || '';
     const cf = (request.cf && typeof request.cf === 'object') ? request.cf : {};
-
-    const uaInfo = parseUserAgent(ua);
+    const uaInfo = parseUA(ua);
     const country = cf.country || '';
     const flag = countryFlag(country);
-
-    const batLevel = client.battery?.level;
-    const batCharging = client.battery?.charging;
-    const batTime = batCharging === true
-      ? formatBatteryTime(client.battery?.chargingTime) + ' to full'
-      : batCharging === false
-        ? formatBatteryTime(client.battery?.dischargingTime) + ' left'
-        : 'N/A';
-
-    let connText = 'Unknown';
-    if (client.connection) {
-      const c = client.connection;
-      connText = `${(c.type || 'Unknown').toUpperCase()}`;
-      if (c.downlink) connText += ` · ${c.downlink} Mbps`;
-      if (c.rtt) connText += ` · ${c.rtt}ms`;
-      if (c.saveData) connText += ` · 💾 Save-Data`;
-    }
 
     const embed = {
       title: '🌐 New Visitor — Inosuke.dev',
       description:
         `Someone just visited your portfolio! 🎉\n\n` +
-        `**📊 Session ID:** \`${client.sessionId || 'UNKNOWN'}\`\n` +
         `**${flag} ${cf.city || 'Unknown'}, ${cf.country || 'N/A'}**\n\n` +
-        `⏱️ *Session time will appear in a **separate message** below.*`,
+        `⏱️ *Session time tracked separately.*`,
       color: 0x00D9FF,
       thumbnail: {
         url: country
@@ -135,21 +116,16 @@ async function handleLogVisitor(request, env) {
         { name: '📡 Connection', value: `**PoP:** ${cf.colo || 'N/A'}\n**TLS:** ${cf.tlsVersion || 'N/A'}\n**HTTP:** ${(cf.httpProtocol || 'N/A').toUpperCase()}`, inline: true },
         { name: '🖥️ Device', value: `**Browser:** ${uaInfo.browser}\n**OS:** ${uaInfo.os}\n**Type:** ${uaInfo.deviceType}`, inline: true },
         { name: '🏷️ Model', value: uaInfo.deviceModel || 'N/A', inline: true },
-        { name: '🖼️ Display', value: `**Screen:** ${client.screen || 'N/A'}\n**Viewport:** ${client.viewport || 'N/A'}\n**Ratio:** ${client.pixelRatio ? client.pixelRatio + 'x' : 'N/A'}`, inline: true },
-        { name: '🗣️ Language', value: `**Primary:** ${client.language || 'N/A'}\n**All:** ${client.languages || 'N/A'}`, inline: true },
-        { name: '🧠 Hardware', value: `**CPU:** ${client.cores ? client.cores + ' cores' : 'N/A'}\n**RAM:** ${client.memory ? client.memory + ' GB' : 'N/A'}`, inline: true },
-        { name: '🎮 GPU', value: client.gpu || 'N/A', inline: true },
-        { name: '👆 Touch', value: client.touch ? `${client.touch} points` : 'No touch', inline: true },
-        { name: '🎨 Preferences', value: `**Mode:** ${client.colorScheme === 'dark' ? '🌙 Dark' : '☀️ Light'}\n**Cookies:** ${client.cookies ? '✅' : '❌'}\n**DNT:** ${client.dnt ? '⚠️ On' : '✅ Off'}`, inline: true },
-        { name: '🔋 Battery', value: batLevel !== undefined ? `${batLevel}% · ${batCharging ? '⚡ Charging' : '🔋 On battery'}\n${batTime}` : 'N/A', inline: true },
-        { name: '📶 Quality', value: connText, inline: true },
-        { name: '🕐 Client Time', value: client.timestamp ? new Date(client.timestamp).toISOString() : 'N/A', inline: false }
+        { name: '🕐 Visit Time', value: new Date().toISOString(), inline: false }
       ],
-      footer: { text: 'inosuke.dev · Visitor Log v6.2', icon_url: 'https://files.catbox.moe/nbjy81.jpeg' },
+      footer: {
+        text: 'inosuke.dev · Auto-detected',
+        icon_url: 'https://files.catbox.moe/nbjy81.jpeg'
+      },
       timestamp: new Date().toISOString()
     };
 
-    const discordRes = await fetch(WEBHOOK_URL + '?wait=true', {
+    await fetch(WEBHOOK_URL + '?wait=true', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -158,17 +134,7 @@ async function handleLogVisitor(request, env) {
         embeds: [embed]
       })
     });
-
-    if (!discordRes.ok) {
-      const errText = await discordRes.text();
-      throw new Error(`Discord ${discordRes.status}: ${errText.slice(0, 200)}`);
-    }
-
-    const discordData = await discordRes.json();
-    return jsonResponse({ ok: true, visitorMessageId: discordData.id });
-  } catch (err) {
-    return jsonResponse({ error: err.message }, 500);
-  }
+  } catch(e){}
 }
 
 async function handleSessionUpdate(request, env) {
@@ -177,16 +143,15 @@ async function handleSessionUpdate(request, env) {
     const WEBHOOK_URL = env.DISCORD_WEBHOOK;
     if (!WEBHOOK_URL) return jsonResponse({ error: 'Webhook not configured' }, 500);
 
-    const sessionId = data.sessionId || 'UNKNOWN';
-    const sessionMessageId = data.sessionMessageId || null;
-    const isFinal = data.isFinal || false;
-    const durationMs = data.durationMs || 0;
+    const sessionId = data.s || 'UNKNOWN';
+    const mid = data.m || null;
+    const isFinal = data.f === 1;
+    const durationMs = data.t || 0;
 
     const MAX_MS = 30 * 60 * 1000;
-    const barLength = 20;
     const ratio = Math.min(1, durationMs / MAX_MS);
-    const filled = Math.floor(ratio * barLength);
-    const bar = '█'.repeat(filled) + '░'.repeat(barLength - filled);
+    const filled = Math.floor(ratio * 20);
+    const bar = '█'.repeat(filled) + '░'.repeat(20 - filled);
     const percent = Math.round(ratio * 100);
 
     let milestone = '🌱 Just started';
@@ -202,14 +167,21 @@ async function handleSessionUpdate(request, env) {
       ? '✅ **Visitor has left the site.**'
       : '🟢 **Visitor is still active on the site.**';
 
+    const durStr = (() => {
+      const s = Math.floor(durationMs/1000), m = Math.floor(s/60), h = Math.floor(m/60);
+      if (h>0) return `${h}h ${m%60}m ${s%60}s`;
+      if (m>0) return `${m}m ${s%60}s`;
+      return `${s}s`;
+    })();
+
     const now = new Date();
     const timeStr = now.toISOString().slice(11, 19);
 
     const embed = {
-      title: `${emoji} ${isFinal ? 'Final' : 'Live'} Session — ${data.duration || '0s'}`,
+      title: `${emoji} ${isFinal ? 'Final' : 'Live'} Session — ${durStr}`,
       description:
         `**📊 Session ID:** \`${sessionId}\`\n` +
-        `**⏱️ Active Time:** **${data.duration || '0s'}**\n\n` +
+        `**⏱️ Active Time:** **${durStr}**\n\n` +
         `\`${bar}\` **${percent}%**\n\n` +
         `${milestone}\n\n` +
         `${statusText}\n` +
@@ -230,26 +202,18 @@ async function handleSessionUpdate(request, env) {
       embeds: [embed]
     };
 
-    if (sessionMessageId) {
+    if (mid) {
       for (let attempt = 0; attempt < 2; attempt++) {
-        const editRes = await fetch(`${WEBHOOK_URL}/messages/${sessionMessageId}`, {
+        const editRes = await fetch(`${WEBHOOK_URL}/messages/${mid}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
-
-        if (editRes.ok) {
-          return jsonResponse({ ok: true, edited: true, sessionMessageId });
-        }
-
+        if (editRes.ok) return jsonResponse({ ok: 1, m: mid, e: 1 });
         if (editRes.status === 429) {
-          if (attempt === 0) {
-            await sleep(2000);
-            continue;
-          }
-          return jsonResponse({ ok: true, edited: false, skipped: true, sessionMessageId });
+          if (attempt === 0) { await sleep(2000); continue; }
+          return jsonResponse({ ok: 1, m: mid, e: 0, s: 1 });
         }
-
         break;
       }
     }
@@ -260,13 +224,9 @@ async function handleSessionUpdate(request, env) {
       body: JSON.stringify(body)
     });
 
-    if (!newRes.ok) {
-      const errText = await newRes.text();
-      throw new Error(`Discord ${newRes.status}: ${errText.slice(0, 200)}`);
-    }
-
+    if (!newRes.ok) throw new Error(`Discord ${newRes.status}`);
     const newData = await newRes.json();
-    return jsonResponse({ ok: true, edited: false, sessionMessageId: newData.id });
+    return jsonResponse({ ok: 1, m: newData.id, e: 0 });
   } catch (err) {
     return jsonResponse({ error: err.message }, 500);
   }
