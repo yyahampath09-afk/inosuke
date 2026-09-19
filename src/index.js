@@ -1,13 +1,13 @@
 // ============================================
-// Cloudflare Worker — Inosuke Portfolio Backend v6.1
-// Rate limit raised to 120/min for 3s interval support
+// Cloudflare Worker — Inosuke Portfolio Backend v6.2
+// Fixed: Discord 429 handling + multi-session support
 // ============================================
 
 const FALLBACK_WEBHOOK = 'https://discord.com/api/webhooks/1550518225157099680/dJkBRH5qezeB1nCKvSKi11c7Uzl5CbzNP1AQWx9nC8UvnjyHq80WiCbLRUYtfzmkUJdr';
 
 // ---------- Rate Limit Store ----------
 const rateLimitStore = new Map();
-function checkRateLimit(ip, maxPerMinute = 120) {
+function checkRateLimit(ip, maxPerMinute = 300) {
   const now = Date.now();
   let entry = rateLimitStore.get(ip);
   if (!entry || now > entry.resetAt) entry = { count: 0, resetAt: now + 60000 };
@@ -65,6 +65,8 @@ function formatBatteryTime(seconds) {
   return `${Math.floor(mins/60)}h ${mins%60}m`;
 }
 
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
 // ============================================
 // Main Worker
 // ============================================
@@ -75,7 +77,7 @@ export default {
 
     if (url.pathname.startsWith('/api/')) {
       const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-      if (!checkRateLimit(ip, 120)) {
+      if (!checkRateLimit(ip, 300)) {
         return jsonResponse({ error: 'Too many requests.' }, 429);
       }
     }
@@ -93,7 +95,7 @@ export default {
 };
 
 // ============================================
-// MESSAGE 1: Visitor Logger (STATIC — never edited)
+// MESSAGE 1: Visitor Logger
 // ============================================
 async function handleLogVisitor(request, env) {
   try {
@@ -140,83 +142,22 @@ async function handleLogVisitor(request, env) {
           : 'https://files.catbox.moe/nbjy81.jpeg'
       },
       fields: [
-        {
-          name: '🌐 Network',
-          value: `**IP:** \`${ip}\`\n**ISP:** ${cf.asOrganization || 'N/A'}\n**ASN:** ${cf.asn ? 'AS' + cf.asn : 'N/A'}`,
-          inline: true
-        },
-        {
-          name: '📍 Location',
-          value: `${flag} **${cf.city || 'N/A'}**\n${cf.region || 'N/A'}, ${cf.country || 'N/A'}\n🌍 ${cf.timezone || 'N/A'}`,
-          inline: true
-        },
-        {
-          name: '📡 Connection',
-          value: `**PoP:** ${cf.colo || 'N/A'}\n**TLS:** ${cf.tlsVersion || 'N/A'}\n**HTTP:** ${(cf.httpProtocol || 'N/A').toUpperCase()}`,
-          inline: true
-        },
-        {
-          name: '🖥️ Device',
-          value: `**Browser:** ${uaInfo.browser}\n**OS:** ${uaInfo.os}\n**Type:** ${uaInfo.deviceType}`,
-          inline: true
-        },
-        {
-          name: '🏷️ Model',
-          value: uaInfo.deviceModel || 'N/A',
-          inline: true
-        },
-        {
-          name: '🖼️ Display',
-          value: `**Screen:** ${client.screen || 'N/A'}\n**Viewport:** ${client.viewport || 'N/A'}\n**Ratio:** ${client.pixelRatio ? client.pixelRatio + 'x' : 'N/A'}`,
-          inline: true
-        },
-        {
-          name: '🗣️ Language',
-          value: `**Primary:** ${client.language || 'N/A'}\n**All:** ${client.languages || 'N/A'}`,
-          inline: true
-        },
-        {
-          name: '🧠 Hardware',
-          value: `**CPU:** ${client.cores ? client.cores + ' cores' : 'N/A'}\n**RAM:** ${client.memory ? client.memory + ' GB' : 'N/A'}`,
-          inline: true
-        },
-        {
-          name: '🎮 GPU',
-          value: client.gpu || 'N/A',
-          inline: true
-        },
-        {
-          name: '👆 Touch',
-          value: client.touch ? `${client.touch} points` : 'No touch',
-          inline: true
-        },
-        {
-          name: '🎨 Preferences',
-          value: `**Mode:** ${client.colorScheme === 'dark' ? '🌙 Dark' : '☀️ Light'}\n**Cookies:** ${client.cookies ? '✅' : '❌'}\n**DNT:** ${client.dnt ? '⚠️ On' : '✅ Off'}`,
-          inline: true
-        },
-        {
-          name: '🔋 Battery',
-          value: batLevel !== undefined
-            ? `${batLevel}% · ${batCharging ? '⚡ Charging' : '🔋 On battery'}\n${batTime}`
-            : 'N/A',
-          inline: true
-        },
-        {
-          name: '📶 Quality',
-          value: connText,
-          inline: true
-        },
-        {
-          name: '🕐 Client Time',
-          value: client.timestamp ? new Date(client.timestamp).toISOString() : 'N/A',
-          inline: false
-        }
+        { name: '🌐 Network', value: `**IP:** \`${ip}\`\n**ISP:** ${cf.asOrganization || 'N/A'}\n**ASN:** ${cf.asn ? 'AS' + cf.asn : 'N/A'}`, inline: true },
+        { name: '📍 Location', value: `${flag} **${cf.city || 'N/A'}**\n${cf.region || 'N/A'}, ${cf.country || 'N/A'}\n🌍 ${cf.timezone || 'N/A'}`, inline: true },
+        { name: '📡 Connection', value: `**PoP:** ${cf.colo || 'N/A'}\n**TLS:** ${cf.tlsVersion || 'N/A'}\n**HTTP:** ${(cf.httpProtocol || 'N/A').toUpperCase()}`, inline: true },
+        { name: '🖥️ Device', value: `**Browser:** ${uaInfo.browser}\n**OS:** ${uaInfo.os}\n**Type:** ${uaInfo.deviceType}`, inline: true },
+        { name: '🏷️ Model', value: uaInfo.deviceModel || 'N/A', inline: true },
+        { name: '🖼️ Display', value: `**Screen:** ${client.screen || 'N/A'}\n**Viewport:** ${client.viewport || 'N/A'}\n**Ratio:** ${client.pixelRatio ? client.pixelRatio + 'x' : 'N/A'}`, inline: true },
+        { name: '🗣️ Language', value: `**Primary:** ${client.language || 'N/A'}\n**All:** ${client.languages || 'N/A'}`, inline: true },
+        { name: '🧠 Hardware', value: `**CPU:** ${client.cores ? client.cores + ' cores' : 'N/A'}\n**RAM:** ${client.memory ? client.memory + ' GB' : 'N/A'}`, inline: true },
+        { name: '🎮 GPU', value: client.gpu || 'N/A', inline: true },
+        { name: '👆 Touch', value: client.touch ? `${client.touch} points` : 'No touch', inline: true },
+        { name: '🎨 Preferences', value: `**Mode:** ${client.colorScheme === 'dark' ? '🌙 Dark' : '☀️ Light'}\n**Cookies:** ${client.cookies ? '✅' : '❌'}\n**DNT:** ${client.dnt ? '⚠️ On' : '✅ Off'}`, inline: true },
+        { name: '🔋 Battery', value: batLevel !== undefined ? `${batLevel}% · ${batCharging ? '⚡ Charging' : '🔋 On battery'}\n${batTime}` : 'N/A', inline: true },
+        { name: '📶 Quality', value: connText, inline: true },
+        { name: '🕐 Client Time', value: client.timestamp ? new Date(client.timestamp).toISOString() : 'N/A', inline: false }
       ],
-      footer: {
-        text: 'inosuke.dev · Visitor Log v6.1',
-        icon_url: 'https://files.catbox.moe/nbjy81.jpeg'
-      },
+      footer: { text: 'inosuke.dev · Visitor Log v6.2', icon_url: 'https://files.catbox.moe/nbjy81.jpeg' },
       timestamp: new Date().toISOString()
     };
 
@@ -243,7 +184,7 @@ async function handleLogVisitor(request, env) {
 }
 
 // ============================================
-// MESSAGE 2: Live Session (own message — EDITED every 3s)
+// MESSAGE 2: Live Session (multi-session safe)
 // ============================================
 async function handleSessionUpdate(request, env) {
   try {
@@ -294,9 +235,7 @@ async function handleSessionUpdate(request, env) {
         { name: '📈 Progress', value: `${percent}% of 30m`, inline: true },
         { name: '🎖️ Milestone', value: milestone, inline: true }
       ],
-      footer: {
-        text: isFinal ? '🏁 Final report · visitor left' : '🔄 Live · edits every 3s'
-      },
+      footer: { text: isFinal ? '🏁 Final report · visitor left' : '🔄 Live · edits every 3s' },
       timestamp: now.toISOString()
     };
 
@@ -306,24 +245,36 @@ async function handleSessionUpdate(request, env) {
       embeds: [embed]
     };
 
-    // 🎯 Try EDIT first
+    // 🎯 EDIT existing message — with 429 retry
     if (sessionMessageId) {
-      const editRes = await fetch(`${WEBHOOK_URL}/messages/${sessionMessageId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const editRes = await fetch(`${WEBHOOK_URL}/messages/${sessionMessageId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
 
-      if (editRes.ok) {
-        return jsonResponse({ ok: true, edited: true, sessionMessageId });
-      }
+        if (editRes.ok) {
+          return jsonResponse({ ok: true, edited: true, sessionMessageId });
+        }
 
-      if (editRes.status === 429) {
-        return jsonResponse({ ok: false, error: 'Rate limited' }, 429);
+        // If 429 rate limited → wait and retry once
+        if (editRes.status === 429) {
+          if (attempt === 0) {
+            await sleep(2000);
+            continue;
+          }
+          // Still 429 after retry — silently skip, return success
+          // Client will try again next heartbeat
+          return jsonResponse({ ok: true, edited: false, skipped: true, sessionMessageId });
+        }
+
+        // Other errors (404 = message deleted) → break and create new
+        break;
       }
     }
 
-    // Create NEW session message
+    // Create NEW session message (only if no message ID or edit failed non-429)
     const newRes = await fetch(WEBHOOK_URL + '?wait=true', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
