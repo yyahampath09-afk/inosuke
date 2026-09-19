@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>Inosuke Hasibira | Developer & VTuber</title>
-<link rel="icon" type="image/jpeg" href="https://files.catbox.moe/whohua.jpg">
+<link rel="icon" type="image/jpeg" href="https://files.catbox.moe/nbjy81.jpeg">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
@@ -306,7 +306,7 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
 .footer .socials{margin-top:16px;display:flex;gap:14px;justify-content:center}
 .footer .socials a{width:40px;height:40px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--accent);transition:0.3s}
 .footer .socials a:hover{background:var(--accent);color:#000;transform:translateY(-4px);box-shadow:0 0 15px var(--accent)}
-.footer .privacy{margin-top:18px;font-size:10px;color:var(--muted);opacity:0.65;max-width:600px;margin-left:auto;margin-right:auto;line-height:1.5;padding:0 10px}
+.footer .privacy{margin-top:14px;font-size:6px;color:var(--muted);opacity:0.45;max-width:480px;margin-left:auto;margin-right:auto;line-height:1.4;padding:0 10px;letter-spacing:0.2px}
 .footer .privacy i{color:var(--accent);margin-right:4px}
 
 #back-top{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:50%;background:var(--accent);color:#000;border:none;font-size:18px;z-index:900;opacity:0;pointer-events:none;transition:0.4s;box-shadow:0 0 20px var(--glow)}
@@ -399,7 +399,7 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
   #music-hint{bottom:70px;left:14px;font-size:10px;padding:7px 12px}
   #music-hint i{font-size:12px}
   .coming-badge{font-size:8px;padding:2px 6px;top:10px;right:10px}
-  .footer .privacy{font-size:9px}
+  .footer .privacy{font-size:6px}
 }
 
 @media(min-width:768px){
@@ -442,7 +442,6 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
   .chrono-num{font-size:34px}
 }
 
-/* ===== Horizontal scroll (skills + projects) ===== */
 .horizontal-scroll-section{
   position:relative;overflow:hidden;min-height:100vh;
   display:flex;flex-direction:column;justify-content:center;align-items:stretch;
@@ -467,7 +466,6 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
 .hss-dots span{width:8px;height:8px;border-radius:50%;background:rgba(0,217,255,0.25);border:1px solid rgba(0,217,255,0.4);transition:0.3s}
 .hss-dots span.active{background:var(--accent);box-shadow:0 0 10px var(--accent);width:24px;border-radius:10px}
 
-/* Shared card layout for Skills + Projects */
 #skills.horizontal-scroll-section,
 #projects.horizontal-scroll-section{padding-top:30px}
 
@@ -823,7 +821,6 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
   </section>
 </div>
 
-<!-- ============ TECHNICAL SKILLS (now styled like Projects) ============ -->
 <section id="skills" class="horizontal-scroll-section">
   <div class="section-header">
     <h2><span class="bracket">// </span>Technical Skills</h2>
@@ -908,7 +905,6 @@ h1 span{color:var(--accent);text-shadow:0 0 12px var(--accent);position:relative
   <div class="hss-dots" data-dots-for="skills"></div>
 </section>
 
-<!-- ============ FEATURED PROJECTS ============ -->
 <section id="projects" class="horizontal-scroll-section">
   <div class="section-header">
     <h2><span class="bracket">// </span>Featured Projects</h2>
@@ -1328,14 +1324,12 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
       scrollBottom(bodyEl);
       const cEl = d.querySelector('.cmd');
 
-      // Type it plain first
       for (let i = 0; i < cmdText.length; i++){
         cEl.textContent += cmdText[i];
         scrollBottom(bodyEl);
         await sleep(40);
       }
 
-      // 🎨 Replace with color-highlighted parts
       cEl.innerHTML = '';
       const CMD_CLASSES = {
         'cat': 'cmd-cat',
@@ -1518,7 +1512,7 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
 })();
 
 /* =========================================================
-   SESSION TIME TRACKER — v6
+   SESSION TIME TRACKER — v7 · MOBILE-SAFE · 3s INTERVAL
    ========================================================= */
 (function(){
   const SESSION_ID = (() => {
@@ -1538,6 +1532,8 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   let finalSent = false;
   let pendingTimers = [];
   let updating = false;
+  let hiddenTimer = null;
+  let heartbeatInterval = null;
 
   function updateActiveTime(){
     if (!document.hidden && lastVisibleAt === 0) lastVisibleAt = Date.now();
@@ -1559,6 +1555,8 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   function clearAllTimers(){
     pendingTimers.forEach(t => { clearTimeout(t); clearInterval(t); });
     pendingTimers = [];
+    if (hiddenTimer){ clearTimeout(hiddenTimer); hiddenTimer = null; }
+    if (heartbeatInterval){ clearInterval(heartbeatInterval); heartbeatInterval = null; }
   }
 
   function collectClientInfo(){
@@ -1640,9 +1638,11 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   }
 
   function sendFinalBeacon(){
-    if (finalSent || sessionEnded) return;
-    finalSent = true; sessionEnded = true;
+    if (finalSent) return;
+    finalSent = true;
+    sessionEnded = true;
     clearAllTimers();
+
     const currentMs = getActiveMs();
     const payload = JSON.stringify({
       durationMs: currentMs,
@@ -1651,23 +1651,57 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
       sessionMessageId: sessionMessageId,
       isFinal: true
     });
+
     if (navigator.sendBeacon){
-      navigator.sendBeacon('/api/session-update', new Blob([payload], { type: 'application/json' }));
+      try {
+        const ok = navigator.sendBeacon(
+          '/api/session-update',
+          new Blob([payload], { type: 'application/json' })
+        );
+        if (ok) return;
+      } catch(e){}
+    }
+
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/session-update', false);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.send(payload);
+    } catch(e){}
+  }
+
+  function handleVisibilityChange(){
+    updateActiveTime();
+
+    if (document.hidden){
+      if (sessionLogged && !sessionEnded) sendUpdate(false);
+
+      if (hiddenTimer) clearTimeout(hiddenTimer);
+      hiddenTimer = setTimeout(() => {
+        if (document.hidden && sessionLogged && !sessionEnded){
+          sendFinalBeacon();
+        }
+      }, 4000);
     } else {
-      fetch('/api/session-update', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:payload,
-        keepalive:true
-      }).catch(()=>{});
+      if (hiddenTimer){
+        clearTimeout(hiddenTimer);
+        hiddenTimer = null;
+        if (!finalSent){
+          sessionEnded = false;
+        }
+      }
+      if (sessionLogged && !sessionEnded) sendUpdate(false);
     }
   }
 
-  document.addEventListener('visibilitychange', () => {
-    updateActiveTime();
-    if (document.hidden && sessionLogged && !sessionEnded) sendUpdate(false);
-  });
+  document.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('pagehide', sendFinalBeacon);
+  window.addEventListener('beforeunload', sendFinalBeacon);
+  document.addEventListener('freeze', sendFinalBeacon);
+
+  document.addEventListener('mousemove', () => {
+    if (!document.hidden) updateActiveTime();
+  }, { passive: true });
 
   async function logVisitor(){
     if (sessionLogged) return;
@@ -1686,13 +1720,16 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
         sessionStorage.setItem('visitor_logged', 'true');
         sessionLogged = true;
         setTimeout(() => sendUpdate(false), 300);
+
+        // Heartbeat every 3s
+        heartbeatInterval = setInterval(() => {
+          if (sessionLogged && !sessionEnded && !document.hidden) {
+            sendUpdate(false);
+          }
+        }, 3000);
       }
     } catch(err){ console.log('Log failed:', err); }
   }
-
-  pendingTimers.push(setInterval(() => {
-    if (sessionLogged && !sessionEnded) sendUpdate(false);
-  }, 6000));
 
   [60000, 5*60*1000, 10*60*1000, 30*60*1000].forEach(ms => {
     pendingTimers.push(setTimeout(() => {
