@@ -1420,10 +1420,11 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
 })();
 
 /* =========================================================
-   SESSION TIME TRACKER — Accurate Active-Time Tracking
+   SESSION TIME TRACKER — v3 · EDIT MODE
+   (Discord message gets EDITED every 5s, not spammed)
    ========================================================= */
 (function(){
-  // ---- Session ID (persist across refresh) ----
+  // ---- Session ID ----
   const SESSION_ID = (() => {
     let sid = sessionStorage.getItem('session_id');
     if (!sid){
@@ -1433,12 +1434,16 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
     return sid;
   })();
 
-  // ---- Active time state ----
+  // ---- State ----
   let activeMs = 0;
   let lastVisibleAt = document.hidden ? 0 : Date.now();
-  let lastSentMs = 0;
   let messageId = sessionStorage.getItem('visitor_message_id') || null;
   let sessionLogged = sessionStorage.getItem('visitor_logged') === 'true';
+
+  // Guards
+  let sessionEnded = false;
+  let finalSent = false;
+  let pendingTimers = [];
 
   function updateActiveTime(){
     if (!document.hidden && lastVisibleAt === 0){
@@ -1464,10 +1469,18 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
     return `${secs}s`;
   }
 
+  function clearAllTimers(){
+    pendingTimers.forEach(t => {
+      clearTimeout(t);
+      clearInterval(t);
+    });
+    pendingTimers = [];
+  }
+
+  // Send update — server-side will EDIT the same message
   async function sendUpdate(isFinal = false){
+    if (sessionEnded && !isFinal) return;
     const currentMs = getActiveMs();
-    if (!isFinal && currentMs - lastSentMs < 5000) return;
-    lastSentMs = currentMs;
     try {
       await fetch('/api/session-update', {
         method: 'POST',
@@ -1485,8 +1498,12 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   }
 
   function sendFinalBeacon(){
+    if (finalSent || sessionEnded) return;
+    finalSent = true;
+    sessionEnded = true;
+    clearAllTimers();
+
     const currentMs = getActiveMs();
-    if (currentMs <= lastSentMs) return;
     const payload = JSON.stringify({
       duration: formatDuration(currentMs),
       durationMs: currentMs,
@@ -1494,6 +1511,7 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
       messageId: messageId,
       isFinal: true
     });
+
     if (navigator.sendBeacon){
       navigator.sendBeacon(
         '/api/session-update',
@@ -1511,12 +1529,12 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
 
   document.addEventListener('visibilitychange', () => {
     updateActiveTime();
-    if (document.hidden && sessionLogged) sendUpdate(false);
+    if (document.hidden && sessionLogged && !sessionEnded) sendUpdate(false);
   });
 
   window.addEventListener('pagehide', sendFinalBeacon);
-  window.addEventListener('beforeunload', sendFinalBeacon);
 
+  // ---- Helpers ----
   function getConnectionType(){
     const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
     if (!conn) return 'Unknown';
@@ -1526,12 +1544,10 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
     const saveData = conn.saveData ? ' (Data Saver ON)' : '';
     return `${type.toUpperCase()} ${speed} ${rtt}${saveData}`.trim();
   }
-
   function getLanguages(){
     const langs = navigator.languages || [navigator.language || 'N/A'];
     return langs.slice(0, 3).join(', ');
   }
-
   function getGPU(){
     try {
       const canvas = document.createElement('canvas');
@@ -1545,7 +1561,6 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
       return 'N/A';
     } catch(e){ return 'N/A'; }
   }
-
   async function getBatteryInfo(){
     try {
       if (navigator.getBattery){
@@ -1561,7 +1576,6 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
     } catch(e){}
     return { level: 'N/A', charging: 'N/A', time: 'N/A' };
   }
-
   async function getIPData(){
     try {
       const res = await fetch('https://ipapi.co/json/');
@@ -1658,14 +1672,20 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
     }
   }
 
-  setInterval(() => { if (sessionLogged) sendUpdate(false); }, 30000);
-  setTimeout(() => { if (sessionLogged) sendUpdate(false); }, 60000);
-  setTimeout(() => { if (sessionLogged) sendUpdate(false); }, 5 * 60 * 1000);
-  setTimeout(() => { if (sessionLogged) sendUpdate(false); }, 10 * 60 * 1000);
-  setTimeout(() => { if (sessionLogged) sendUpdate(false); }, 30 * 60 * 1000);
+  // EDIT every 5 seconds — same message updates live
+  pendingTimers.push(setInterval(() => {
+    if (sessionLogged && !sessionEnded) sendUpdate(false);
+  }, 5000));
 
+  // Milestone pings
+  pendingTimers.push(setTimeout(() => { if (sessionLogged && !sessionEnded) sendUpdate(false); }, 60000));
+  pendingTimers.push(setTimeout(() => { if (sessionLogged && !sessionEnded) sendUpdate(false); }, 5 * 60 * 1000));
+  pendingTimers.push(setTimeout(() => { if (sessionLogged && !sessionEnded) sendUpdate(false); }, 10 * 60 * 1000));
+  pendingTimers.push(setTimeout(() => { if (sessionLogged && !sessionEnded) sendUpdate(false); }, 30 * 60 * 1000));
+
+  // Kick off
   if (!sessionLogged){
-    setTimeout(logVisitor, 2000);
+    pendingTimers.push(setTimeout(logVisitor, 2000));
   }
 })();
 
@@ -1814,9 +1834,7 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
       function startAutoPlay(){
         if (autoScrollStarted || userInteracted) return;
         autoScrollStarted = true;
-
         let idx = 0;
-
         function goNext(){
           if (userInteracted) return;
           idx++;
@@ -1826,7 +1844,6 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
           }
           const progress = idx / (panels.length - 1);
           const targetScroll = st.start + progress * (st.end - st.start);
-
           gsap.to(window, {
             duration: 1.2,
             scrollTo: { y: targetScroll, autoKill: true },
@@ -1836,7 +1853,6 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
             }
           });
         }
-
         autoTimer = setTimeout(goNext, 1500);
       }
 
