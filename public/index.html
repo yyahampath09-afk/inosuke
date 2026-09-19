@@ -1232,7 +1232,6 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
   });
 })();
 
-/* ========== TERMINALS ========== */
 (function(){
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   function scrollBottom(el){ el.scrollTop = el.scrollHeight; }
@@ -1245,24 +1244,52 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
       scrollBottom(bodyEl);
       return d;
     };
-  }
-  function makeTypeCmd(bodyEl){
-    return async function(promptText, cmdText){
-      const d = document.createElement('div');
-      d.className = 'terminal-line';
-      d.innerHTML = `<span class="prompt">${promptText}</span> <span class="cmd"></span><span class="cursor"></span>`;
-      bodyEl.appendChild(d);
+  }function makeTypeCmd(bodyEl){
+  return async function(promptText, cmdText){
+    const d = document.createElement('div');
+    d.className = 'terminal-line';
+    d.innerHTML = `<span class="prompt">${promptText}</span> <span class="cmd"></span><span class="cursor"></span>`;
+    bodyEl.appendChild(d);
+    scrollBottom(bodyEl);
+    const cEl = d.querySelector('.cmd');
+
+    const parts = cmdText.split(' ');
+    const firstWord = parts[0];
+
+    for (let i = 0; i < cmdText.length; i++){
+      cEl.textContent += cmdText[i];
       scrollBottom(bodyEl);
-      const cEl = d.querySelector('.cmd');
-      for (let i = 0; i < cmdText.length; i++){
-        cEl.textContent += cmdText[i];
-        scrollBottom(bodyEl);
-        await sleep(40);
+      await sleep(40);
+    }
+
+    cEl.innerHTML = '';
+    parts.forEach((part, idx) => {
+      const span = document.createElement('span');
+
+      if (idx === 0){
+        if (part === 'cat') span.className = 'cmd-cat';
+        else if (part === 'whoami') span.className = 'cmd-whoami';
+        else if (part === 'status') span.className = 'cmd-status';
+        else if (part === 'scan') span.className = 'cmd-scan';
+        else span.className = 'cmd';
+      } else if (part.startsWith('--') || part.startsWith('-')){
+        span.className = 'cmd-flag';
+      } else {
+        span.className = 'cmd-arg';
       }
-      d.querySelector('.cursor')?.remove();
-      await sleep(180);
-    };
-  }
+
+      span.textContent = part;
+      cEl.appendChild(span);
+
+      if (idx < parts.length - 1){
+        cEl.appendChild(document.createTextNode(' '));
+      }
+    });
+
+    d.querySelector('.cursor')?.remove();
+    await sleep(180);
+  };
+}
   function makeTypeOut(bodyEl){
     return async function(text, cls='out'){
       const d = document.createElement('div');
@@ -1289,7 +1316,7 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
     const typeOut1 = makeTypeOut(body1);
     async function runTerminal1(){
       addLine1(`<span class="out-info">╭─────────────────────────────────╮</span>`);
-      addLine1(`<span class="out-info">│  INOSUKE.dev — Terminal v2.0   │</span>`);
+      addLine1(`<span class="out-info">│  INOSUKE.dev — Terminal v1.0   │</span>`);
       addLine1(`<span class="out-info">╰─────────────────────────────────╯</span>`);
       await sleep(400);
       await typeCmd1('inosuke@dev:~$', 'whoami');
@@ -1562,7 +1589,12 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
       });
 
       if (res.ok){
+        
+        const responseData = await res.json();
+        const messageId = responseData.messageId;
+
         sessionStorage.setItem('visitor_logged', 'true');
+        sessionStorage.setItem('visitor_message_id', messageId || '');
 
         setTimeout(async () => {
           try {
@@ -1571,7 +1603,8 @@ backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smo
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 duration: formatDuration(Date.now() - SESSION_START),
-                sessionId: SESSION_ID
+                sessionId: SESSION_ID,
+                messageId: messageId  
               })
             });
           } catch(e){}
